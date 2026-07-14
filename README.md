@@ -107,6 +107,36 @@ controlli hanno trovato qualcosa che non torna.
    busta. L'app spiega i fatti e cosa cambia con ogni scelta; non dice mai cosa fare.
 6. **Il progetto** (pulsante in alto) → perché esiste l'app e perché tutto è locale.
 
+### Parser multi-layout
+
+Il parser non dipende più da un solo gestionale o da codici voce di lunghezza fissa. Usa
+insieme testo, coordinate delle celle, intestazioni equivalenti e controlli matematici per
+adattarsi a strutture differenti:
+
+- riconosce sia codici brevi e numerici (`0`, `22`, `200`) sia codici alfanumerici
+  (`Z00001`, `F02010`) e righe in cui codice e descrizione sono fusi;
+- individua colonne chiamate in modi diversi (competenze/spettanze/accrediti,
+  trattenute/ritenute/deduzioni, quantità/riferimento);
+- legge anche riepiloghi separati di contributi, IRPEF, progressivi, TFR, ferie e permessi;
+- gestisce importi italiani e internazionali (`1.234,56`, `1234,56`, `1234.56`) e PDF di
+  più pagine;
+- riconosce esplicitamente Jet HR e Zucchetti e applica euristiche generiche ai layout
+  TeamSystem/LYNFA, INAZ, Centro Paghe, NoiPA, Sistemi e ai cedolini non identificati;
+- mostra in verifica un livello di affidabilità, il formato rilevato e il numero di voci
+  riconosciute. I dati ricavati matematicamente vengono dichiarati, mai nascosti.
+
+I test di regressione usano esclusivamente dati inventati e riproducono le caratteristiche
+strutturali dei formati verificati. Si eseguono con:
+
+```bash
+node tests/parser.test.mjs
+```
+
+Nessun parser locale può promettere precisione assoluta su ogni cedolino esistente:
+scansioni rovinate, tabelle disegnate come immagini e personalizzazioni aziendali possono
+richiedere correzioni. Per questo la schermata **Verifica** resta obbligatoria e distingue
+una lettura buona da una parziale o bassa.
+
 Interfaccia: chiara e rassicurante, costruita attorno all’icona del **foglio illuminato**. Il pulsante **Riassunto** racconta il mese
 in parole semplicissime e include la barra "Dove vanno i tuoi soldi" (verde = netto,
 arancione = contributi INPS, rosso = tasse, grigio = piccole quote). Schede in ordine
