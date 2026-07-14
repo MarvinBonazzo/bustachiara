@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v2-foglio-illuminato';
+const CACHE = 'bustachiara-v3-installazione-open-source';
 const ASSETS = [
   './',
   './index.html',

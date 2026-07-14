@@ -1,6 +1,10 @@
 # Node
 node_modules/
 
+# Generated build artifacts (GitHub Actions recreates them before deployment)
+/BustaChiara.html
+/pwa/index.html
+
 # macOS
 .DS_Store
 **/.DS_Store

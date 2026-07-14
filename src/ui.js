@@ -173,8 +173,8 @@ function renderImporta() {
   $('#view-importa').innerHTML = `
   <div class="card import-hero">
     <div class="hero-copy">
-      <p class="eyebrow">BUSTA PAGA CHIARA, DAVVERO</p>
-      <h2>Porta luce nei numeri del tuo stipendio.</h2>
+      <p class="eyebrow">BUSTA PAGA CHIARA, LETTERALMENTE</p>
+      <h2>Porta chiarezza nei numeri del tuo stipendio.</h2>
       <p>Importa la busta paga: BustaChiara traduce le voci, ricontrolla i calcoli e ti indica cosa approfondire, in parole comprensibili.</p>
       <div class="trust-row" aria-label="Garanzie di privacy e funzionamento">
         <span>🔒 Nessun caricamento</span><span>✈️ Funziona offline</span><span>✓ Verifica prima di salvare</span>
@@ -963,6 +963,11 @@ function renderProgetto() {
     <p>La busta paga è uno dei documenti più importanti della vita di chi lavora, ed è scritta in un linguaggio che quasi nessuno ha mai studiato. Il risultato è che tanti — soprattutto chi è al primo impiego — firmano, incassano e sperano che i conti siano giusti. Gli errori in busta esistono, sono più frequenti di quanto si pensi, e quasi sempre nessuno li cerca.</p>
     <p>BustaChiara nasce per una cosa sola: metterti in condizione di <b>capire</b> la tua busta e di <b>controllarla</b>, senza dover essere un consulente del lavoro e senza dover consegnare i tuoi dati a qualcun altro.</p>
   </div>
+  <div class="card"><h2>Un progetto Open Source</h2>
+    <p>BustaChiara è un progetto <b>Open Source</b>: il codice è pubblico e chiunque può contribuire a rendere il servizio più chiaro, preciso e accessibile.</p>
+    <p>Puoi aiutare segnalando un problema, proponendo una funzione, migliorando le spiegazioni, verificando un CCNL o inviando direttamente una modifica al codice. <b>Ogni persona che contribuirà concretamente al progetto verrà riconosciuta nella lista dei contributori.</b></p>
+    <p><a href="https://github.com/ShivenBonazzo/bustachiara" target="_blank" rel="noopener"><b>Apri il progetto su GitHub →</b></a></p>
+  </div>
   <div class="card"><h2>Perché tutto locale e privato</h2>
     <p>Una busta paga contiene l’elenco più sensibile di informazioni che esista su di te: quanto guadagni, dove lavori, il tuo codice fiscale, i tuoi prestiti (cessioni del quinto), a volte perfino dati sulla salute (malattie, permessi 104). Caricarla su un servizio online — o incollarla in una chat con un’intelligenza artificiale — significa affidare tutto questo a un’azienda terza, alle sue policy e ai suoi archivi.</p>
     <p>Qui la scelta è tecnica, non solo promessa: la pagina contiene una <b>Content-Security-Policy</b> che ordina al browser di bloccare ogni connessione di rete. I motori di lettura (PDF e riconoscimento ottico) sono inglobati nel file: per questo pesa qualche MB. Puoi verificarlo da solo: apri gli strumenti sviluppatore del browser, scheda “Rete”, e usa l’app — non parte nessuna richiesta. Funziona anche in aereo.</p>
@@ -1180,16 +1185,41 @@ window.addEventListener('appinstalled', () => {
   toast('BustaChiara è installata e pronta anche offline.');
 });
 async function installaApp() {
-  if (installPromptEvent) {
-    await installPromptEvent.prompt();
-    installPromptEvent = null;
-    aggiornaPulsanteInstallazione();
-    return;
-  }
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  openInfo('Installa BustaChiara', ios
-    ? '<p>In Safari tocca <b>Condividi</b> e poi <b>Aggiungi alla schermata Home</b>. Da lì BustaChiara si apre come un’app e continua a funzionare offline.</p>'
-    : '<p>Apri il menu del browser e scegli <b>Installa app</b> oppure <b>Aggiungi alla schermata Home</b>. Dopo la prima apertura, BustaChiara funziona anche senza connessione.</p>');
+  const android = /android/i.test(navigator.userAgent);
+  const mac = /macintosh|mac os x/i.test(navigator.userAgent);
+  const suggerimento = ios
+    ? 'Su questo dispositivo: apri BustaChiara in Safari, tocca Condividi e scegli “Aggiungi alla schermata Home”.'
+    : android
+      ? 'Su questo dispositivo: usa “Installa ora” qui sotto oppure il menu ⋮ di Chrome → “Installa app”.'
+      : mac
+        ? 'Su questo Mac: in Safari scegli File → “Aggiungi al Dock”; con Chrome o Edge usa “Installa ora”.'
+        : 'Su questo computer: usa “Installa ora” oppure l’icona di installazione nella barra degli indirizzi di Chrome o Edge.';
+  const promptDisponibile = !!installPromptEvent;
+  openInfo('Installa BustaChiara', `
+    <div class="finding info"><span class="lvchip info">Per te</span><div><p>${suggerimento}</p></div></div>
+    ${promptDisponibile ? '<div class="btnrow"><button class="primary" id="avvia-installazione">Installa ora</button></div>' : ''}
+    <h4>iPhone e iPad</h4>
+    <p>Apri il sito con <b>Safari</b> → tocca <b>Condividi</b> (il quadrato con la freccia) → scorri e scegli <b>Aggiungi alla schermata Home</b> → tocca <b>Aggiungi</b>.</p>
+    <h4>Android</h4>
+    <p>Apri il sito con <b>Chrome</b> → tocca il menu <b>⋮</b> → scegli <b>Installa app</b> o <b>Aggiungi alla schermata Home</b> → conferma. Se compare “Installa ora” qui sopra, puoi usare direttamente quello.</p>
+    <h4>PC Windows o Linux</h4>
+    <p>Apri il sito con <b>Chrome</b> o <b>Microsoft Edge</b> → clicca l’icona di installazione nella barra degli indirizzi, oppure apri il menu del browser e scegli <b>Installa BustaChiara</b>.</p>
+    <h4>Mac</h4>
+    <p>Con <b>Safari 17 o successivo</b>: menu <b>File → Aggiungi al Dock</b>. Con Chrome o Edge: usa l’icona di installazione nella barra degli indirizzi o il menu <b>Installa BustaChiara</b>.</p>
+    <p><b>Dopo l’installazione</b>, l’app compare insieme alle altre applicazioni e continua a funzionare offline. Serve una connessione solo alla prima apertura e per ricevere gli aggiornamenti.</p>
+    <p class="muted small">Non serve cercarla su App Store o Play Store: BustaChiara è una PWA e si installa direttamente dal sito. I dati restano separati su ogni dispositivo, quindi usa Altro → Esporta per fare un backup o trasferirli.</p>`);
+  if (promptDisponibile) {
+    const b = $('#avvia-installazione');
+    if (b) b.addEventListener('click', async () => {
+      const evento = installPromptEvent;
+      closeInfo();
+      if (!evento) return;
+      await evento.prompt();
+      installPromptEvent = null;
+      aggiornaPulsanteInstallazione();
+    });
+  }
 }
 
 /* ============================================================
