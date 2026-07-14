@@ -452,6 +452,20 @@ const VOCI_PATTERN = [
   { re: /addiz(?:ionale|\.)?\s*(?:region|reg\.)/i, nome: 'Addizionale regionale', cat: 'trattenuta', cosa: 'Imposta regionale sull’imponibile dell’anno precedente, normalmente trattenuta a rate.', controlla: 'L’anno scritto nella voce indica il periodo fiscale a cui si riferisce.', fonti: ['finanze'] },
   { re: /addiz(?:ionale|\.)?\s*(?:comun|com\.)/i, nome: 'Addizionale comunale', cat: 'trattenuta', cosa: 'Imposta comunale: saldo dell’anno precedente e/o acconto dell’anno corrente, trattenuti a rate.', controlla: 'Controlla aliquota e soglia di esenzione del comune nelle tabelle del Dipartimento Finanze.', fonti: ['finanze'] },
   { re: /trattamento\s*integrativo|l\.?\s*21\/2020|bonus\s*irpef|ex\s*bonus\s*renzi/i, nome: 'Trattamento integrativo', cat: 'competenza', cosa: 'Fino a 100 €/mese per redditi bassi (fino a 15.000 €, o 28.000 con capienza particolare).', controlla: 'Se il reddito supera la soglia a conguaglio, va restituito (a rate): occhio alla voce di recupero.', fonti: ['ade'] },
+  { re: /stipendio\s+tabellare|minimo\s+(?:tabellare|contrattuale)|paga\s+base|base\s+conglobata/i, nome: 'Stipendio tabellare / paga base', cat: 'competenza', cosa: 'Parte fissa stabilita dal CCNL per livello, qualifica o fascia economica.', controlla: 'Confronta livello, percentuale part-time e tabella economica vigente del contratto.' },
+  { re: /retribuzione\s+professionale\s+docent|\bRPD\b/i, nome: 'Retribuzione professionale docenti (RPD)', cat: 'competenza', cosa: 'Compenso fisso accessorio previsto per il personale docente del comparto scuola.', controlla: 'Importo legato ad anzianità e durata del rapporto; nei contratti brevi può essere proporzionato.' },
+  { re: /compenso\s+individuale\s+accessorio|\bCIA\b/i, nome: 'Compenso individuale accessorio (CIA)', cat: 'competenza', cosa: 'Voce accessoria fissa del personale ATA e di altre qualifiche pubbliche.', controlla: 'Verifica qualifica, fascia e mesi/giorni retribuiti.' },
+  { re: /indennit[aà]\s+di\s+amministrazione|indennit[aà]\s+di\s+ente/i, nome: 'Indennità di amministrazione o ente', cat: 'competenza', cosa: 'Voce accessoria del pubblico impiego collegata all’amministrazione di appartenenza.', controlla: 'Importo e tredicesima dipendono dal comparto e dalla posizione economica.' },
+  { re: /fondo\s+credito|gestione\s+credito|enpdep|opera\s+previdenza|inpdap|cpdel|cps|ctps/i, nome: 'Ritenuta previdenziale del pubblico impiego', cat: 'trattenuta', cosa: 'Contributo previdenziale o assistenziale tipico dei dipendenti pubblici, esposto separatamente nel cedolino NoiPA.', controlla: 'Base e aliquota cambiano secondo cassa, comparto e regime TFS/TFR.', fonti: ['inps'] },
+  { re: /lavoro\s+supplementare|ore\s+supplementari/i, nome: 'Lavoro supplementare part-time', cat: 'competenza', cosa: 'Ore lavorate oltre l’orario part-time pattuito ma entro l’orario normale del full-time.', controlla: 'Quantità e maggiorazione onnicomprensiva dipendono dal CCNL.' },
+  { re: /terzo\s+elemento|elemento\s+provinciale|salario\s+provinciale/i, nome: 'Elemento retributivo territoriale', cat: 'competenza', cosa: 'Quota prevista da contratto provinciale o territoriale, frequente in agricoltura, edilizia e artigianato.', controlla: 'Verifica tabella della provincia e qualifica applicata.' },
+  { re: /accantonamento.*cassa\s+edile|cassa\s+edile.*accanton|gratifica\s+natalizia\s+e\s+ferie|\bGNF\b/i, nome: 'Accantonamento Cassa Edile ferie e gratifica', cat: 'dato', cosa: 'Quota che l’impresa versa alla Cassa Edile per ferie e gratifica natalizia degli operai.', controlla: 'Non è una normale trattenuta persa: verifica accrediti e liquidazioni sul prospetto della Cassa Edile.' },
+  { re: /anzianit[aà]\s+professionale\s+edile|\bAPE\b/i, nome: 'Anzianità professionale edile (APE)', cat: 'competenza', cosa: 'Prestazione della Cassa Edile collegata alle ore lavorate e all’anzianità nel settore.', controlla: 'Controlla la posizione presso la Cassa Edile territoriale.' },
+  { re: /elemento\s+variabile\s+della\s+retribuzione|\bEVR\b/i, nome: 'Elemento variabile della retribuzione (EVR)', cat: 'competenza', cosa: 'Premio territoriale/aziendale tipico dell’edilizia, legato a indicatori di produttività.', controlla: 'Percentuale e periodo sono stabiliti dagli accordi territoriali.' },
+  { re: /vitto\s+e\s+alloggio|indennit[aà]\s+sostitutiva\s+(?:vitto|alloggio)/i, nome: 'Vitto e alloggio / indennità sostitutiva', cat: 'competenza', cosa: 'Valore convenzionale o indennità sostitutiva tipica del lavoro domestico e dei rapporti con convivenza.', controlla: 'Usa i valori convenzionali annuali del CCNL lavoro domestico.' },
+  { re: /cassa\s*colf|cas\.sa\.colf/i, nome: 'Contributo CAS.SA.COLF', cat: 'trattenuta', cosa: 'Contributo alla cassa sanitaria e assistenziale del lavoro domestico.', controlla: 'Verifica ore contributive e quota ripartita tra datore e lavoratore.' },
+  { re: /rateo.*(?:ferie|tredicesima|quattordicesima)|(?:ferie|13|14).*(?:rateo|maturat)/i, nome: 'Rateo maturato o liquidato', cat: 'competenza', cosa: 'Quota mensile di ferie o mensilità aggiuntiva maturata e, se presente in competenza, pagata nel mese.', controlla: 'Distingui il solo dato di maturazione dall’importo effettivamente liquidato.' },
+  { re: /giornat[ae]\s+(?:ordinarie|lavorate)|ore\s+effettive/i, nome: 'Lavoro ordinario a giornate/ore', cat: 'competenza', cosa: 'Retribuzione del lavoro ordinario calcolata sulle presenze del periodo.', controlla: 'Quantità × tariffa deve coincidere con l’importo.' },
   { re: /assegno\s*unico|\banf\b|assegni\s*familiari/i, nome: 'Assegno unico / ANF', cat: 'competenza', cosa: 'Dal 2022 l’Assegno Unico per i figli lo paga DIRETTAMENTE l’INPS (domanda su inps.it), non passa più dalla busta. In busta restano solo vecchi ANF residuali.', controlla: '', fonti: ['inps'] },
   { re: /malattia/i, nome: 'Malattia', cat: 'competenza', cosa: 'Indennità INPS + integrazione datore secondo CCNL. In busta la vedi spesso divisa in “c/INPS” e “c/ditta”.', controlla: 'Percentuali di integrazione nell’articolo “malattia” del CCNL.', fonti: ['inps'] },
   { re: /carenza/i, nome: 'Carenza malattia', cat: 'competenza', cosa: 'Sono i primi giorni di malattia, non indennizzati dall’INPS e pagati dal datore solo secondo le regole del CCNL.', controlla: 'Verifica numero di giorni, percentuale e limite di eventi previsto dal contratto.' },
@@ -491,6 +505,15 @@ function espandiAbbreviazioniVoce(value) {
 
 function classificaVoce(voce) {
   const v = voce || {};
+  if (v.categoriaManuale || v.nomeManuale) {
+    const categories = { competenza: 'competenza', trattenuta: 'trattenuta', dato: 'dato' };
+    return {
+      nome: v.nomeManuale || v.descrizione || 'Voce classificata manualmente',
+      cat: categories[v.categoriaManuale] || (v.trattenuta != null ? 'trattenuta' : (v.competenza != null ? 'competenza' : 'dato')),
+      cosa: 'Classificazione confermata o corretta sul dispositivo. BustaChiara la riutilizzerà per descrizioni uguali dello stesso software paghe.',
+      controlla: 'La classificazione locale aiuta a leggere la voce, ma quantità e importi vanno comunque confrontati col cedolino.',
+    };
+  }
   const code = String(v.codice || '').toUpperCase();
   if (code && VOCI_CODICI[code]) return VOCI_CODICI[code];
   const description = String(v.descrizione || '').trim();
@@ -517,18 +540,18 @@ function classificaVoce(voce) {
   }
   if (v.trattenuta != null) {
     return {
-      nome: 'Trattenuta da identificare',
+      nome: code ? `Trattenuta gestionale ${code}` : 'Trattenuta aziendale',
       cat: 'trattenuta',
-      cosa: 'È un importo sottratto al lordo o al netto, ma la causale non coincide ancora con una categoria generale affidabile.',
-      controlla: 'Controlla la descrizione sul cedolino e chiedi all’ufficio paghe solo se la causale resta poco chiara.',
+      cosa: `È un importo sottratto indicato con la causale originale “${description}”. La posizione nella colonna trattenute è certa, mentre la natura precisa può dipendere dal gestionale o da un accordo aziendale.`,
+      controlla: 'Controlla base, quantità ed eventuale accordo collegato alla causale originale.',
     };
   }
   if (v.competenza != null) {
     return {
-      nome: 'Competenza retributiva da identificare',
+      nome: v.base != null && v.rifQta != null ? 'Competenza calcolata a quantità' : (code ? `Competenza gestionale ${code}` : 'Competenza aziendale'),
       cat: 'competenza',
-      cosa: 'È un importo riconosciuto a tuo favore. Può derivare da un accordo aziendale, una voce contrattuale locale o una causale specifica del gestionale.',
-      controlla: 'Verifica quantità, tariffa e riferimento nel contratto o nell’accordo aziendale.',
+      cosa: `È un importo riconosciuto a tuo favore con la causale originale “${description}”. Può derivare dal CCNL, da un accordo locale o da una voce specifica del gestionale.`,
+      controlla: v.base != null && v.rifQta != null ? 'Verifica che base × quantità sia coerente con l’importo.' : 'Verifica il riferimento nel contratto o nell’accordo aziendale.',
     };
   }
   return {

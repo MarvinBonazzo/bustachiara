@@ -4,6 +4,7 @@ import vm from 'node:vm';
 
 const context = { console };
 vm.createContext(context);
+vm.runInContext(readFileSync(new URL('../src/cnel-index.js', import.meta.url), 'utf8'), context);
 vm.runInContext(readFileSync(new URL('../src/parser.js', import.meta.url), 'utf8') + '\nthis.ParserUnderTest = Parser;', context);
 vm.runInContext(readFileSync(new URL('../src/data.js', import.meta.url), 'utf8') + '\nthis.DataUnderTest = { CCNL_DB, classificaVoce };', context);
 vm.runInContext(readFileSync(new URL('../src/checks.js', import.meta.url), 'utf8') + '\nthis.ChecksUnderTest = eseguiControlli;', context);
@@ -21,6 +22,10 @@ function page(rows) {
 
 function approx(actual, expected, epsilon = 0.01) {
   assert.ok(actual != null && Math.abs(actual - expected) <= epsilon, `atteso ${expected}, ricevuto ${actual}`);
+}
+
+function getPath(value, path) {
+  return path.split('.').reduce((current, key) => current == null ? current : current[key], value);
 }
 
 assert.equal(Parser.itNum('1.234,56'), 1234.56);
@@ -194,4 +199,21 @@ assert.equal(genericOcr.record.periodo.mese, 6);
 assert.equal(genericOcr.record.voci.some(v => /Indennità di turno/i.test(v.descrizione)), true);
 approx(genericOcr.record.totali.netto, 1600);
 
-console.log('OK — parser multi-layout: numeri, Jet HR, Zucchetti e OCR generico');
+const fixtures = JSON.parse(readFileSync(new URL('./fixtures/general-layouts.json', import.meta.url), 'utf8'));
+for (const fixture of fixtures) {
+  const result = fixture.type === 'text'
+    ? Parser.parseFreeText(fixture.text)
+    : Parser.parsePdfPages(fixture.pages.map(rows => page(rows)));
+  for (const [path, expected] of Object.entries(fixture.expected)) {
+    const actual = getPath(result.record, path);
+    if (typeof expected === 'number') approx(actual, expected, 0.02);
+    else assert.equal(actual, expected, `${fixture.id}: ${path}`);
+  }
+}
+
+const officialOnly = Parser.trovaCcnl({ ccnl: { cnel: 'T271' } }, Data.CCNL_DB);
+assert.equal(officialOnly.id, 'cnel-t271');
+assert.equal(officialOnly.officialOnly, true);
+assert.match(officialOnly.nome, /FISM|infanzia|scuol/i);
+
+console.log('OK — parser multi-layout: privato, Jet HR, Zucchetti, NoiPA, domestico, edilizia e OCR generico');

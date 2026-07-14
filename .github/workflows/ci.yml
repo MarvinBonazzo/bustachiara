@@ -1,0 +1,21 @@
+name: Verifica parser e PWA
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tests/parser.test.mjs
+      - run: node build.mjs
+      - name: Controlla che la build contenga parser e indice CNEL
+        run: |
+          test -s pwa/index.html
+          grep -q "const CNEL_INDEX_META" pwa/index.html
+          if grep -q "__CNEL_INDEX__" pwa/index.html; then exit 1; fi

@@ -25,6 +25,9 @@ __pycache__/
 # Logs
 *.log
 
+# File temporanei di ricerca e render locali
+/tmp/
+
 # Editors
 .vscode/
 .idea/

@@ -34,13 +34,14 @@ function primaFrase(t) { const i = (t || '').indexOf('. '); return i > 20 ? t.sl
 /* ---------- archivio locale ---------- */
 const STORE_KEY = 'bustachiara_v1';
 const Store = {
-  data: { records: [], customCcnl: [], prefs: { modo: 'dettagliato' } },
+  data: { records: [], customCcnl: [], voiceAliases: [], prefs: { modo: 'dettagliato' } },
   load() {
     try {
       const d = JSON.parse(localStorage.getItem(STORE_KEY));
       if (d && Array.isArray(d.records)) {
         this.data = Object.assign(this.data, d);
         this.data.prefs = Object.assign({ modo: 'dettagliato' }, d.prefs);
+        this.data.voiceAliases = Array.isArray(d.voiceAliases) ? d.voiceAliases : [];
         this.data.records = this.data.records.map(record => {
           Parser.ripulisciRecord(record);
           if (!record.ccnlId) {
@@ -56,8 +57,52 @@ const Store = {
 };
 function allCcnl() { return [...(Store.data.customCcnl || []).map(reviveCustom), ...CCNL_DB]; }
 function reviveCustom(c) { return Object.assign({}, c, { match: (c.matchSrc || []).map(s => { try { return new RegExp(s, 'i'); } catch (e) { return /$^/; } }) }); }
-function ccnlById(id) { return allCcnl().find(c => c.id === id) || null; }
+function ccnlById(id) {
+  const local = allCcnl().find(c => c.id === id);
+  if (local) return local;
+  const match = String(id || '').match(/^cnel-(.+)$/);
+  return match ? Parser.cnelContractByCode(match[1]) : null;
+}
 function recSorted() { return [...Store.data.records].sort((a, b) => periodoKey(a.periodo) - periodoKey(b.periodo)); }
+
+function aliasKey(value) {
+  return Parser.normalizzaTesto(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+    .replace(/[^A-Z0-9%]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function applicaAliasLocali(record) {
+  const software = record.meta && record.meta.software || '*';
+  for (const voice of record.voci || []) {
+    const original = voice.descrizioneOriginale || voice.descrizione || '';
+    const key = aliasKey(original);
+    if (!key) continue;
+    const alias = (Store.data.voiceAliases || []).find(item => item.key === key && (item.software === software || item.software === '*'));
+    if (!alias) continue;
+    voice.descrizioneOriginale = original;
+    if (alias.descrizione) voice.descrizione = alias.descrizione;
+    if (alias.categoria) voice.categoriaManuale = alias.categoria;
+    if (alias.nome) voice.nomeManuale = alias.nome;
+    voice.meta = Object.assign({}, voice.meta, { learnedLocally: true });
+  }
+}
+
+function imparaCorrezioni(record) {
+  const software = record.meta && record.meta.software || '*';
+  const aliases = Store.data.voiceAliases || (Store.data.voiceAliases = []);
+  for (const voice of record.voci || []) {
+    const original = voice.descrizioneOriginale || '';
+    const key = aliasKey(original);
+    if (!key) continue;
+    const corrected = String(voice.descrizione || '').trim();
+    const changed = corrected && aliasKey(corrected) !== key;
+    if (!changed && !voice.categoriaManuale && !voice.nomeManuale) continue;
+    const item = { software, key, originale: original, descrizione: corrected || original,
+      categoria: voice.categoriaManuale || null, nome: voice.nomeManuale || null, updatedAt: new Date().toISOString() };
+    const index = aliases.findIndex(alias => alias.software === software && alias.key === key);
+    if (index >= 0) aliases[index] = item; else aliases.push(item);
+  }
+  if (aliases.length > 500) Store.data.voiceAliases = aliases.slice(-500);
+}
 
 /* ---------- tema e modalità ---------- */
 function applyModo() {
@@ -323,6 +368,111 @@ function imageToCanvas(file) {
   });
 }
 
+function cloneCanvas(source) {
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width; canvas.height = source.height;
+  canvas.getContext('2d').drawImage(source, 0, 0);
+  return canvas;
+}
+
+function trimLightMargins(source) {
+  const ctx = source.getContext('2d', { willReadFrequently: true });
+  const { width, height } = source;
+  if (!width || !height) return source;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const step = Math.max(2, Math.floor(Math.max(width, height) / 1400));
+  let left = width, right = 0, top = height, bottom = 0;
+  for (let y = 0; y < height; y += step) for (let x = 0; x < width; x += step) {
+    const i = (y * width + x) * 4;
+    const gray = data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114;
+    if (gray > 242) continue;
+    left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+  }
+  if (right <= left || bottom <= top) return source;
+  const pad = Math.round(Math.min(width, height) * .012);
+  left = Math.max(0, left - pad); top = Math.max(0, top - pad);
+  right = Math.min(width - 1, right + pad); bottom = Math.min(height - 1, bottom + pad);
+  if (left < width * .015 && right > width * .985 && top < height * .015 && bottom > height * .985) return source;
+  const canvas = document.createElement('canvas');
+  canvas.width = right - left + 1; canvas.height = bottom - top + 1;
+  canvas.getContext('2d').drawImage(source, left, top, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function estimateSmallSkew(source) {
+  const scale = Math.min(1, 800 / Math.max(source.width, 1));
+  const width = Math.max(1, Math.round(source.width * scale));
+  const height = Math.max(1, Math.round(source.height * scale));
+  const tiny = document.createElement('canvas'); tiny.width = width; tiny.height = height;
+  const ctx = tiny.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, width, height);
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const samples = [];
+  for (let y = 2; y < height - 2; y += 3) for (let x = 2; x < width - 2; x += 3) {
+    const i = (y * width + x) * 4;
+    const gray = pixels[i] * .299 + pixels[i + 1] * .587 + pixels[i + 2] * .114;
+    if (gray < 145) samples.push([x, y]);
+  }
+  if (samples.length < 250) return 0;
+  let best = { angle: 0, score: -Infinity };
+  for (let angle = -3; angle <= 3.001; angle += .5) {
+    const tangent = Math.tan(angle * Math.PI / 180);
+    const rows = new Uint16Array(height + Math.ceil(width * .06) + 4);
+    for (const [x, y] of samples) {
+      const row = Math.round(y + x * tangent + width * .03);
+      if (row >= 0 && row < rows.length && rows[row] < 65535) rows[row]++;
+    }
+    let score = 0;
+    for (const count of rows) score += count * count;
+    if (score > best.score) best = { angle, score };
+  }
+  return Math.abs(best.angle) >= .5 ? best.angle : 0;
+}
+
+function rotateCanvas(source, degrees) {
+  if (!degrees) return source;
+  const radians = -degrees * Math.PI / 180;
+  const sin = Math.abs(Math.sin(radians)), cos = Math.abs(Math.cos(radians));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(source.width * cos + source.height * sin);
+  canvas.height = Math.ceil(source.width * sin + source.height * cos);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(canvas.width / 2, canvas.height / 2); ctx.rotate(radians);
+  ctx.drawImage(source, -source.width / 2, -source.height / 2);
+  return canvas;
+}
+
+function localThresholdCanvas(source) {
+  const canvas = cloneCanvas(source);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = image.data;
+  const block = Math.max(24, Math.round(Math.min(canvas.width, canvas.height) / 45));
+  for (let by = 0; by < canvas.height; by += block) for (let bx = 0; bx < canvas.width; bx += block) {
+    const maxY = Math.min(canvas.height, by + block), maxX = Math.min(canvas.width, bx + block);
+    let sum = 0, count = 0;
+    for (let y = by; y < maxY; y += 3) for (let x = bx; x < maxX; x += 3) {
+      const i = (y * canvas.width + x) * 4;
+      sum += data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114; count++;
+    }
+    const threshold = Math.max(125, Math.min(225, sum / Math.max(1, count) - 13));
+    for (let y = by; y < maxY; y++) for (let x = bx; x < maxX; x++) {
+      const i = (y * canvas.width + x) * 4;
+      const gray = data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114;
+      const value = gray < threshold ? 0 : 255;
+      data[i] = data[i + 1] = data[i + 2] = value;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+function prepareOcrCanvas(source) {
+  const trimmed = trimLightMargins(source);
+  return trimLightMargins(rotateCanvas(trimmed, estimateSmallSkew(trimmed)));
+}
+
 /* ---------- OCR (tesseract.js inglobato, zero rete) ---------- */
 const OCR = { worker: null, initing: null };
 async function getOcrWorker(status) {
@@ -349,14 +499,45 @@ async function getOcrWorker(status) {
   })();
   return OCR.initing;
 }
-async function ocrData(canvas, status) {
+async function ocrData(canvas, status, pageSegMode = '3') {
   const worker = await getOcrWorker(status);
   status && status('riconosco il testo…', 0.5);
+  await worker.setParameters({ tessedit_pageseg_mode: pageSegMode, preserve_interword_spaces: '1', user_defined_dpi: '300' });
   const { data } = await worker.recognize(canvas.toDataURL('image/png'));
   status && status('fatto', 1);
   return data;
 }
 async function ocr(canvas, status) { return (await ocrData(canvas, status)).text || ''; }
+
+function mergeOcrPasses(primary, secondary) {
+  const words = [...(primary.words || [])];
+  for (const word of secondary.words || []) {
+    if (!word.text || !word.bbox) continue;
+    const cx = (word.bbox.x0 + word.bbox.x1) / 2, cy = (word.bbox.y0 + word.bbox.y1) / 2;
+    const duplicateIndex = words.findIndex(existing => {
+      if (!existing.bbox) return false;
+      const ex = (existing.bbox.x0 + existing.bbox.x1) / 2, ey = (existing.bbox.y0 + existing.bbox.y1) / 2;
+      const tolerance = Math.max(8, word.bbox.y1 - word.bbox.y0);
+      return Math.abs(cx - ex) <= tolerance && Math.abs(cy - ey) <= tolerance
+        && aliasKey(existing.text) === aliasKey(word.text);
+    });
+    if (duplicateIndex < 0) words.push(word);
+    else if ((word.confidence || 0) > (words[duplicateIndex].confidence || 0)) words[duplicateIndex] = word;
+  }
+  return Object.assign({}, primary, { words, text: words.map(word => word.text).join(' ') });
+}
+
+async function ocrDataMulti(canvas, status) {
+  const primary = await ocrData(canvas, (message, progress) => status && status('passaggio 1/2: ' + message, (progress || 0) * .62), '3');
+  const usable = (primary.words || []).filter(word => word.text && word.text.trim());
+  const mean = usable.length ? usable.reduce((sum, word) => sum + (word.confidence || 0), 0) / usable.length : 0;
+  const needsSecondPass = mean < 78 || usable.length < 55;
+  if (!needsSecondPass) return primary;
+  status && status('passaggio 2/2: miglioro contrasto e tabelle…', .64);
+  const thresholded = localThresholdCanvas(canvas);
+  const secondary = await ocrData(thresholded, (message, progress) => status && status('passaggio 2/2: ' + message, .64 + (progress || 0) * .36), '6');
+  return mergeOcrPasses(primary, secondary);
+}
 
 /* Converte le parole OCR (con coordinate) negli "item" usati dal parser dei PDF,
    unendo le parole vicine non numeriche (es. "IMPORTO"+"BASE" → "IMPORTO BASE"). */
@@ -427,14 +608,26 @@ const CAMPI_SCALARI = ['periodo', 'azienda.nome', 'azienda.cf', 'dipendente.nome
 function unisciEstrazioni(a, b) {
   const [base, altro] = scoreEstrazione(a.record) >= scoreEstrazione(b.record) ? [a, b] : [b, a];
   for (const p of CAMPI_SCALARI) {
-    if (getPath(base.record, p) == null) {
-      const v = getPath(altro.record, p);
-      if (v != null) setPath(base.record, p, v);
+    const alternative = getPath(altro.record, p);
+    if (alternative == null) continue;
+    const currentConfidence = Parser.fieldConfidence(base.record, p) || 0;
+    const alternativeConfidence = Parser.fieldConfidence(altro.record, p) || 0;
+    if (getPath(base.record, p) == null || alternativeConfidence > currentConfidence + .12) {
+      setPath(base.record, p, alternative);
+      if (altro.record.meta && altro.record.meta.fields && altro.record.meta.fields[p]) {
+        base.record.meta.fields[p] = altro.record.meta.fields[p];
+      }
     }
   }
-  if (!base.record.voci.length && altro.record.voci.length) base.record.voci = altro.record.voci;
+  for (const voice of altro.record.voci || []) {
+    const amount = voice.competenza ?? voice.trattenuta;
+    const duplicate = base.record.voci.some(existing => aliasKey(existing.descrizione) === aliasKey(voice.descrizione)
+      && (existing.competenza ?? existing.trattenuta) === amount);
+    if (!duplicate) base.record.voci.push(voice);
+  }
   base.record.derivati = Parser.derivaIndice(base.record);
   base.record.meta.fonte = 'ocr';
+  base.record.meta.consistency = Parser.valutaCoerenza(base.record);
   base.record.meta.qualita = Parser.valutaQualita(base.record);
   base.warnings = [...new Set([...(base.warnings || []), ...(altro.warnings || [])])];
   return base;
@@ -444,8 +637,9 @@ async function parseDaOcr(canvases, status) {
   const pagineItems = [];
   let testo = '';
   for (let i = 0; i < canvases.length; i++) {
-    const data = await ocrData(canvases[i], (m, f) => status && status(`${canvases.length > 1 ? 'pagina ' + (i + 1) + '/' + canvases.length + ': ' : ''}${m}`, ((i + (f || 0)) / canvases.length)));
-    const items = ocrToItems(data, canvases[i]);
+    const prepared = prepareOcrCanvas(canvases[i]);
+    const data = await ocrDataMulti(prepared, (m, f) => status && status(`${canvases.length > 1 ? 'pagina ' + (i + 1) + '/' + canvases.length + ': ' : ''}${m}`, ((i + (f || 0)) / canvases.length)));
+    const items = ocrToItems(data, prepared);
     pagineItems.push(items);
     // testo ricostruito dalle parole già ripulite dal rumore, riga per riga
     const perRiga = new Map();
@@ -457,8 +651,7 @@ async function parseDaOcr(canvases, status) {
     testo += [...perRiga.entries()].sort((a, b) => b[0] - a[0])
       .map(([, cs]) => cs.sort((a, b) => a.x - b.x).map(c => c.str).join(' ')).join('\n') + '\n';
   }
-  const daCoordinate = Parser.parsePdfPages(pagineItems);
-  daCoordinate.record.meta.fonte = 'ocr';
+  const daCoordinate = Parser.parsePdfPages(pagineItems, { source: 'ocr' });
   const daTesto = Parser.parseFreeText(testo);
   const esito = unisciEstrazioni(daCoordinate, daTesto);
   esito.warnings = ['Lettura ottica (OCR): i numeri possono contenere errori di lettura, controlla TUTTI i campi prima di salvare.',
@@ -475,6 +668,7 @@ function emptyRecord() {
 }
 function startVerifica(record, warnings) {
   if (!record.id) record.id = uid();
+  applicaAliasLocali(record);
   Parser.ripulisciRecord(record);
   record.meta = record.meta || { fonte: 'manuale' };
   record.meta.qualita = Parser.valutaQualita(record);
@@ -517,7 +711,16 @@ function renderVerifica() {
   const qualityClass = quality.livello === 'alta' ? 'ok' : (quality.livello === 'media' ? 'warn' : 'alert');
   const qualityLabel = quality.livello === 'alta' ? 'Buona' : (quality.livello === 'media' ? 'Parziale' : 'Bassa');
   const software = r.meta && r.meta.software && !/non identificato|sconosciuto/i.test(r.meta.software) ? ` · formato ${esc(r.meta.software)}` : '';
-  const ccnlOpts = allCcnl().map(c => `<option value="${esc(c.id)}" ${r.ccnlId === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
+  const knownContracts = allCcnl();
+  const selectedOfficial = r.ccnlId && !knownContracts.some(c => c.id === r.ccnlId) ? ccnlById(r.ccnlId) : null;
+  const ccnlOpts = [...(selectedOfficial ? [selectedOfficial] : []), ...knownContracts]
+    .map(c => `<option value="${esc(c.id)}" ${r.ccnlId === c.id ? 'selected' : ''}>${esc(c.nome)}${c.officialOnly ? ' — indice ufficiale CNEL' : ''}</option>`).join('');
+  const confidenceBadge = path => {
+    const meta = r.meta && r.meta.fields && r.meta.fields[path];
+    if (!meta || meta.confidence >= 0.75) return '';
+    const label = meta.confidence < 0.55 ? 'incerto' : 'da verificare';
+    return ` <span class="field-confidence ${meta.confidence < 0.55 ? 'low' : ''}" title="${esc(meta.method || 'estrazione euristica')}">${label}</span>`;
+  };
   $('#view-verifica').innerHTML = `
   <div class="card">
     <h2>Verifica i dati estratti</h2>
@@ -530,16 +733,16 @@ function renderVerifica() {
     <h3>Contratto (CCNL) ${iBtn('ccnl')}</h3>
     <div class="grid">
       <label class="field">CCNL applicato<select id="f-ccnl"><option value="">— non identificato —</option>${ccnlOpts}</select></label>
-      <label class="field">Codice CNEL (dal cedolino)<input data-k="ccnl.cnel" value="${esc(r.ccnl.cnel || '')}" placeholder="es. H052"></label>
-      <label class="field">Descrizione contratto<input data-k="ccnl.descrizione" value="${esc(r.ccnl.descrizione || '')}"></label>
+      <label class="field">Codice CNEL (dal cedolino)${confidenceBadge('ccnl.cnel')}<input data-k="ccnl.cnel" value="${esc(r.ccnl.cnel || '')}" placeholder="es. H052"></label>
+      <label class="field">Descrizione contratto${confidenceBadge('ccnl.descrizione')}<input data-k="ccnl.descrizione" value="${esc(r.ccnl.descrizione || '')}"></label>
     </div>
     ${FIELD_GROUPS.map(g => `<h3>${esc(g.titolo)} ${g.info ? iBtn(g.info) : ''}</h3><div class="grid">${g.fields.map(([k, lab]) => {
       const v = getPath(r, k);
-      return `<label class="field">${esc(lab)}<input data-k="${k}" value="${v == null ? '' : esc(NUM_FIELDS.has(k) && typeof v === 'number' ? fmtEur(v, /mese|anno$/.test(k) && k.startsWith('periodo') ? 0 : 2) : v)}"></label>`;
+      return `<label class="field">${esc(lab)}${confidenceBadge(k)}<input data-k="${k}" value="${v == null ? '' : esc(NUM_FIELDS.has(k) && typeof v === 'number' ? fmtEur(v, /mese|anno$/.test(k) && k.startsWith('periodo') ? 0 : 2) : v)}"></label>`;
     }).join('')}</div>`).join('')}
     <h3>Voci del cedolino <span class="muted small">(tocca × per eliminare una riga letta male)</span></h3>
     <div class="tablewrap"><table class="voci" id="voci-edit">
-      <thead><tr><th>Codice</th><th>Descrizione</th><th class="num">Base ${iBtn('base')}</th><th class="num">Rif. ${iBtn('riferimento')}</th><th>Unità</th><th class="num">Trattenuta ${iBtn('trattenuta')}</th><th class="num">Competenza ${iBtn('competenza')}</th><th></th></tr></thead>
+      <thead><tr><th>Codice</th><th>Descrizione</th><th>Tipo</th><th class="num">Base ${iBtn('base')}</th><th class="num">Rif. ${iBtn('riferimento')}</th><th>Unità</th><th class="num">Trattenuta ${iBtn('trattenuta')}</th><th class="num">Competenza ${iBtn('competenza')}</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
     <div class="btnrow">
@@ -564,6 +767,7 @@ function renderVociEdit() {
   tb.innerHTML = draft.record.voci.map((v, i) => `<tr data-i="${i}">
     <td><input class="code" data-vk="codice" value="${esc(v.codice || '')}"></td>
     <td><input class="desc" data-vk="descrizione" value="${esc(v.descrizione || '')}"></td>
+    <td><select data-vk="categoriaManuale" title="Conferma il tipo di voce"><option value="">Automatico</option><option value="competenza" ${v.categoriaManuale === 'competenza' ? 'selected' : ''}>Competenza</option><option value="trattenuta" ${v.categoriaManuale === 'trattenuta' ? 'selected' : ''}>Trattenuta</option><option value="dato" ${v.categoriaManuale === 'dato' ? 'selected' : ''}>Dato</option></select></td>
     <td class="num"><input data-vk="base" value="${v.base == null ? '' : esc(fmtEur(v.base, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
     <td class="num"><input data-vk="rifQta" value="${v.rifQta == null ? '' : esc(fmtEur(v.rifQta, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
     <td><input class="code" data-vk="rifUnita" value="${esc(v.rifUnita || '')}"></td>
@@ -582,7 +786,7 @@ function onVerificaInput(e) {
   if (inp.dataset.vk != null) {
     const tr = inp.closest('tr'); const v = draft.record.voci[+tr.dataset.i]; if (!v) return;
     const k = inp.dataset.vk;
-    v[k] = (k === 'codice' || k === 'descrizione' || k === 'rifUnita') ? inp.value.trim() : flexNum(inp.value);
+    v[k] = (k === 'codice' || k === 'descrizione' || k === 'rifUnita' || k === 'categoriaManuale') ? inp.value.trim() : flexNum(inp.value);
   } else if (inp.dataset.k) {
     const k = inp.dataset.k;
     setPath(draft.record, k, NUM_FIELDS.has(k) ? flexNum(inp.value) : (inp.value.trim() || null));
@@ -616,6 +820,7 @@ function salvaDraft() {
   if (dup && !confirm(`Esiste già una busta per ${r.periodo.label}: la sostituisco?`)) return;
   if (dup) Store.data.records = Store.data.records.filter(x => x.id !== dup.id);
   r.derivati = Parser.derivaIndice(r);
+  imparaCorrezioni(r);
   r.meta.importedAt = new Date().toISOString();
   const i = Store.data.records.findIndex(x => x.id === r.id);
   if (i >= 0) Store.data.records[i] = r; else Store.data.records.push(r);
@@ -1034,6 +1239,11 @@ function renderImpostazioni() {
     </div>
     <p class="muted small">L’export contiene le buste in chiaro: trattalo come un documento riservato.</p>
   </div>
+  <div class="card"><h2>Aiuta il parser senza inviare il PDF</h2>
+    <p>Le correzioni fatte alle descrizioni vengono ricordate solo su questo dispositivo. Puoi esportare un pacchetto per contribuire al progetto: elimina nomi, codice fiscale, azienda, file originale e identificativi locali, ma conserva struttura e importi utili ai test.</p>
+    <div class="btnrow"><button class="ghost" id="btn-export-fixtures">Esporta fixture senza anagrafiche</button></div>
+    <p class="muted small">Alias appresi: <b>${(Store.data.voiceAliases || []).length}</b>. Prima di pubblicare il JSON, aprilo e controllalo: descrizioni aziendali e combinazioni di importi potrebbero comunque essere riconoscibili.</p>
+  </div>
   <div class="card"><h2>Editor CCNL personalizzato</h2>
     <p class="muted small">Copia i valori dal testo del tuo CCNL (archivio CNEL o sindacati) e avrai i controlli su misura.</p>
     <div class="grid">
@@ -1053,15 +1263,22 @@ function renderImpostazioni() {
     ${custom.length ? `<h3>I tuoi CCNL</h3>${custom.map((c, i) => `<div class="fonte-item">${esc(c.nome)} <button class="danger del-cc" data-i="${i}" style="float:right;padding:2px 10px">×</button></div>`).join('')}` : ''}
   </div>
   <div class="card"><h2>Aggiornamento delle regole</h2>
-    <p class="muted">Le regole fiscali incorporate coprono il <b>2024, 2025 e 2026</b> (aggiornate a luglio 2026). Scaglioni IRPEF, bonus e aliquote cambiano con ogni legge di bilancio: se usi l’app su anni successivi, l’app te lo segnala e usa le regole più recenti disponibili. I valori dei CCNL invecchiano con i rinnovi: fidati sempre più del testo ufficiale che di questo archivio.</p>
+    <p class="muted">Le regole fiscali incorporate coprono il <b>2024, 2025 e 2026</b>. L’indice ufficiale contiene <b>${typeof CNEL_INDEX_META !== 'undefined' ? CNEL_INDEX_META.codes : 'oltre 1.000'} codici CNEL</b> ed è rigenerabile dagli Open Data; per i principali contratti l’app conserva anche regole dettagliate. Scaglioni, bonus, minimi e aliquote possono cambiare: il testo ufficiale resta la fonte che fa fede.</p>
     ${fontiHTML(['ade', 'inps', 'cnel'])}
   </div>`;
   $('#btn-export').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(Store.data, null, 1)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'bustachiara-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    downloadJson('bustachiara-backup-' + new Date().toISOString().slice(0, 10) + '.json', Store.data);
+  });
+  $('#btn-export-fixtures').addEventListener('click', () => {
+    if (!Store.data.records.length && !(Store.data.voiceAliases || []).length) { toast('Non ci sono ancora correzioni o buste da esportare.'); return; }
+    if (!confirm('Il file rimuove le anagrafiche, ma conserva descrizioni e importi per poter riprodurre il parsing. Vuoi crearlo e controllarlo prima di condividerlo?')) return;
+    const contribution = {
+      schema: 'bustachiara-anonymized-fixtures-v1',
+      generatedAt: new Date().toISOString(),
+      aliases: (Store.data.voiceAliases || []).map(({ software, key, originale, descrizione, categoria, nome }) => ({ software, key, originale, descrizione, categoria, nome })),
+      fixtures: Store.data.records.map(anonymizeFixture),
+    };
+    downloadJson('bustachiara-fixtures-senza-anagrafiche-' + new Date().toISOString().slice(0, 10) + '.json', contribution);
   });
   $('#btn-import-json').addEventListener('click', () => $('#json-input').click());
   $('#json-input').addEventListener('change', async (e) => {
@@ -1073,6 +1290,9 @@ function renderImpostazioni() {
       let n = 0;
       for (const r of d.records) if (!ids.has(r.id)) { Store.data.records.push(r); n++; }
       Store.data.customCcnl = [...(Store.data.customCcnl || []), ...((d.customCcnl || []).filter(c => !(Store.data.customCcnl || []).some(x => x.id === c.id)))];
+      for (const alias of d.voiceAliases || []) {
+        if (!(Store.data.voiceAliases || []).some(existing => existing.software === alias.software && existing.key === alias.key)) Store.data.voiceAliases.push(alias);
+      }
       Store.save(); renderImporta(); renderImpostazioni();
       toast(`Import completato: ${n} buste aggiunte.`);
     } catch (err) { toast('Backup non valido: ' + err.message); }
@@ -1080,7 +1300,7 @@ function renderImpostazioni() {
   $('#btn-wipe').addEventListener('click', () => {
     if (!confirm('Cancellare TUTTE le buste e i CCNL personalizzati da questo dispositivo? (irreversibile senza backup)')) return;
     const prefs = Store.data.prefs;
-    Store.data = { records: [], customCcnl: [], prefs }; Store.save();
+    Store.data = { records: [], customCcnl: [], voiceAliases: [], prefs }; Store.save();
     renderImporta(); renderImpostazioni(); toast('Dati cancellati.');
   });
   $('#btn-cc-save').addEventListener('click', () => {
@@ -1107,6 +1327,37 @@ function renderImpostazioni() {
   $$('.del-cc').forEach(b => b.addEventListener('click', () => {
     Store.data.customCcnl.splice(+b.dataset.i, 1); Store.save(); renderImpostazioni();
   }));
+}
+
+function downloadJson(name, value) {
+  const blob = new Blob([JSON.stringify(value, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function anonymizeFixture(record) {
+  const clone = JSON.parse(JSON.stringify(record));
+  delete clone.id;
+  clone.azienda = {};
+  clone.dipendente = {
+    livello: clone.dipendente && clone.dipendente.livello || null,
+    qualifica: clone.dipendente && clone.dipendente.qualifica || null,
+  };
+  if (clone.meta) {
+    delete clone.meta.fileName;
+    delete clone.meta.importedAt;
+  }
+  const scrub = value => String(value || '')
+    .replace(/\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/gi, '[CF]')
+    .replace(/\bIT\d{2}[A-Z]\d{10}[A-Z0-9]{12}\b/gi, '[IBAN]')
+    .replace(/\b\d{11}\b/g, '[ID]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL]');
+  for (const voice of clone.voci || []) {
+    voice.descrizione = scrub(voice.descrizione);
+    voice.descrizioneOriginale = scrub(voice.descrizioneOriginale);
+  }
+  return clone;
 }
 
 /* ============================================================

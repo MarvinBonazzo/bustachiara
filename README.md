@@ -109,33 +109,56 @@ controlli hanno trovato qualcosa che non torna.
 
 ### Parser multi-layout
 
-Il parser non dipende più da un solo gestionale o da codici voce di lunghezza fissa. Usa
-insieme testo, coordinate delle celle, intestazioni equivalenti e controlli matematici per
-adattarsi a strutture differenti:
+Il parser non dipende più da un solo gestionale, da una sola posizione della pagina o da
+codici voce di lunghezza fissa. La lettura avviene a strati: testo/coordinate, riconoscimento
+del layout, candidati alternativi per ogni campo, classificazione semantica e infine
+controlli matematici. Il valore che quadra meglio viene scelto conservando provenienza e
+affidabilità:
 
 - riconosce sia codici brevi e numerici (`0`, `22`, `200`) sia codici alfanumerici
   (`Z00001`, `F02010`) e righe in cui codice e descrizione sono fusi;
 - individua colonne chiamate in modi diversi (competenze/spettanze/accrediti,
   trattenute/ritenute/deduzioni, quantità/riferimento);
 - legge anche riepiloghi separati di contributi, IRPEF, progressivi, TFR, ferie e permessi;
+- legge i cedolini senza una classica tabella voci (per esempio NoiPA e lavoro domestico)
+  attraverso etichette, contesto della sezione e ruolo economico dell'importo;
 - gestisce importi italiani e internazionali (`1.234,56`, `1234,56`, `1234.56`) e PDF di
   più pagine;
 - riconosce esplicitamente Jet HR e Zucchetti e applica euristiche generiche ai layout
-  TeamSystem/LYNFA, INAZ, Centro Paghe, NoiPA, Sistemi e ai cedolini non identificati;
-- mostra in verifica un livello di affidabilità, il formato rilevato e il numero di voci
-  riconosciute. I dati ricavati matematicamente vengono dichiarati, mai nascosti.
+  TeamSystem/LYNFA/GECOM, INAZ, Centro Paghe/Paghe Open, NoiPA, Sistemi JOB, ADP, SAP,
+  Cassa Edile, lavoro domestico e ai cedolini non identificati;
+- confronta tutte le combinazioni plausibili di competenze, trattenute, arrotondamento e
+  netto: questo evita di scambiare un imponibile o un progressivo per un totale del mese;
+- verifica anche il calcolo `quantità × base`, la continuità dei ratei e la plausibilità
+  della paga oraria;
+- per le foto prova ritaglio, raddrizzamento, soglia locale e due modalità OCR, poi fonde le
+  parole usando coordinate e confidenza;
+- mostra in verifica l'affidabilità del documento e dei singoli campi. I dati ricavati o
+  dubbi vengono dichiarati, mai nascosti.
 
-I test di regressione usano esclusivamente dati inventati e riproducono le caratteristiche
-strutturali dei formati verificati. Si eseguono con:
+Le correzioni alle causali proprietarie vengono apprese **solo sul dispositivo** e per lo
+specifico software paghe. Dalla volta successiva la stessa descrizione viene classificata
+come competenza, trattenuta o dato con il nome confermato dall'utente. Da **Altro** si può
+anche esportare un fixture privo delle identità principali per contribuire a nuovi test;
+descrizioni e importi possono comunque essere riconoscibili e vanno controllati prima di
+pubblicarlo.
+
+I test di regressione usano esclusivamente dati inventati e riproducono famiglie strutturali
+diverse: LUL privato, Jet HR, Zucchetti, NoiPA, lavoro domestico, edilizia/Cassa Edile,
+tabella senza codici e OCR generico. Si eseguono con:
 
 ```bash
 node tests/parser.test.mjs
 ```
 
-Nessun parser locale può promettere precisione assoluta su ogni cedolino esistente:
+Nessun parser, locale o online, può promettere precisione assoluta su ogni cedolino esistente:
 scansioni rovinate, tabelle disegnate come immagini e personalizzazioni aziendali possono
 richiedere correzioni. Per questo la schermata **Verifica** resta obbligatoria e distingue
 una lettura buona da una parziale o bassa.
+
+Metodo di ricerca, formati pubblici consultati e strategia per ampliare i test sono descritti
+in [`docs/parser-research.md`](docs/parser-research.md). I PDF di ricerca e i cedolini reali
+non sono inclusi nel repository.
 
 Interfaccia: chiara e rassicurante, costruita attorno all’icona del **foglio illuminato**. Il pulsante **Riassunto** racconta il mese
 in parole semplicissime e include la barra "Dove vanno i tuoi soldi" (verde = netto,
@@ -213,7 +236,19 @@ Ferie 4 settimane e riposi (D.lgs. 66/2003) · 11 festività (L. 260/1949) · bu
 (L. 4/1953) · retribuzione proporzionata (art. 36 Cost.) · malattia e comporto · maternità/
 paternità/congedi (D.lgs. 151/2001) · permessi L. 104/92 · prescrizione crediti (5 anni).
 
-### CCNL in archivio (20)
+### CCNL in archivio
+
+L'app incorpora due livelli distinti:
+
+- **20 CCNL curati**, con parametri utili ai controlli (mensilità, divisore, ferie, ROL,
+  fondi e note di settore);
+- l'**indice ufficiale completo dei codici CNEL**, generato dagli Open Data: al 14 luglio
+  2026 contiene **1.143 codici unici ricavati da 2.260 depositi**. Anche un codice non
+  curato viene quindi riconosciuto e mostrato con titolo, settore e date disponibili,
+  senza inventare parametri contrattuali.
+
+I 20 contratti curati comprendono:
+
 Turismo–Alberghi Confcommercio (CNEL H052, **testato sul cedolino reale**) · Pubblici
 Esercizi FIPE (CNEL H05Y, **testato sul cedolino reale Jet HR**) · Terziario/Commercio
 Confcommercio · Metalmeccanici industria e artigiani ·
@@ -224,6 +259,10 @@ Sanità privata · Lavoro domestico · Somministrazione · Agricoltura operai.
 Per ciascuno: ferie, ROL/ex festività, mensilità, divisori, scatti, fondo pensione
 negoziale (con % contrattuali), fondo sanitario, enti bilaterali, note "brutali" di settore.
 
+L'indice viene rigenerato ogni settimana dal workflow
+`.github/workflows/update-cnel.yml`; è sempre possibile aggiornarlo a mano con
+`node scripts/update-cnel.mjs`.
+
 **Onestà sui dati CCNL**: i valori contrassegnati con ⚠️ nell'app sono *indicativi* (sintesi
 sindacali e conoscenza consolidata, non il testo depositato). Il testo che fa fede è
 l'archivio **CNEL** + le tabelle dei sindacati firmatari, sempre linkati. I CCNL si rinnovano
@@ -233,20 +272,20 @@ di continuo: più il tempo passa, più fidati dei link e meno dell'archivio inte
 
 ## 5. Cosa MANCA (limiti dichiarati, senza giri di parole)
 
-- **~1.000 CCNL non coperti in dettaglio.** In Italia esistono circa mille contratti
-  depositati; nessuno strumento li copre tutti con precisione. Soluzione: l'app riconosce il
-  codice CNEL stampato sul cedolino, applica i minimi di legge come base e ti dà un **editor
-  CCNL** (⚙️ Altro) per inserire i valori del tuo contratto leggendoli dal testo ufficiale.
+- **I CCNL non curati sono identificati, non interpretati in dettaglio.** L'indice ufficiale
+  riconosce 1.143 codici, ma mensilità, minimi, ferie e maggiorazioni non possono essere
+  dedotti in sicurezza dal solo titolo. L'app applica i minimi di legge come base e offre un
+  **editor CCNL** (⚙️ Altro) per inserire i valori leggendo il testo ufficiale.
 - **Minimi tabellari completi non inclusi.** Cambiano a ogni tranche di rinnovo: includerli
   tutti significherebbe sbagliarli. Dove non c'è il dato, l'app lo dice e linka le tabelle
   sindacali; puoi inserirli nell'editor.
 - **Addizionali regionali e comunali non ricalcolate**: ~8.000 comuni con aliquote e soglie
   proprie. L'app verifica solo la plausibilità e linka le tabelle ufficiali del MEF.
-- **Casi particolari non gestiti nei ricalcoli** (le voci vengono comunque mostrate e
+- **Casi particolari letti ma non sempre ricalcolati** (le voci vengono comunque mostrate e
   spiegate): apprendistato (aliquote ridotte), detrazioni per familiari a carico (serve la
-  tua situazione familiare), part-time verticale/ciclico, dirigenti, operai edili (Cassa
-  Edile), lavoro domestico (contributi a fasce), agricoli (CPL provinciali), conguagli di
-  fine rapporto, pignoramenti complessi.
+  situazione familiare), part-time verticale/ciclico, dirigenti, operai edili/Cassa Edile,
+  lavoro domestico (contributi a fasce), agricoli (CPL provinciali), conguagli di fine
+  rapporto e pignoramenti complessi.
 - **OCR**: su foto storte o scansioni di bassa qualità sbaglia — per questo c'è SEMPRE la
   schermata di verifica. Il PDF nativo è molto più affidabile della foto.
 - **Il 2027 non esiste ancora**: le regole fiscali arrivano fino al 2026. Su anni successivi
@@ -305,19 +344,27 @@ contributi accettati.
 
 ```
 BustaChiara/
+├── .github/workflows/ ← test automatici, deploy e aggiornamento settimanale CNEL
+├── docs/              ← metodo di ricerca e ampliamento del parser
 ├── pwa/               ← versione installabile, pronta per GitHub Pages
 │   ├── index.html     (generato automaticamente durante il deploy, non versionato)
 │   ├── manifest.webmanifest, sw.js (offline totale dopo la prima visita)
 │   └── icons/         (foglio illuminato + tagli PWA generati da make-icons.py)
 ├── build.mjs          ← assembla pwa/index.html dai sorgenti
 ├── make-icons.py      ← rigenera le icone PWA dalla sorgente (richiede Pillow)
+├── scripts/
+│   └── update-cnel.mjs ← scarica e compatta gli Open Data ufficiali CNEL
 ├── src/
 │   ├── template.html  ← struttura + CSP
 │   ├── app.css        ← stile responsive e identità visiva verde del foglio illuminato
 │   ├── data.js        ← FISCO (2024–26), CCNL_DB (20), dizionario voci, GLOSSARIO, LEGGE, FONTI, CONSIGLI
-│   ├── parser.js      ← parser PDF (layout Zucchetti + euristiche generiche + testo OCR)
+│   ├── cnel-index.js  ← 1.143 codici ufficiali, file generato automaticamente
+│   ├── parser.js      ← parser multi-layout, candidati, provenienza e controlli di coerenza
 │   ├── checks.js      ← motore dei controlli
-│   └── ui.js          ← interfaccia, import/OCR, cronologia, export
+│   └── ui.js          ← interfaccia, OCR adattivo, apprendimento locale, cronologia, export
+├── tests/
+│   ├── parser.test.mjs
+│   └── fixtures/      ← soli layout e dati inventati, mai cedolini reali
 └── vendor/            ← librerie inglobate alla build
     ├── pdf.min.js + pdf.worker.min.js        (pdf.js 3.11.174, Apache-2.0)
     ├── tesseract.min.js + worker + core wasm (tesseract.js 5.1.1, Apache-2.0)
@@ -326,15 +373,16 @@ BustaChiara/
 
 - **Un solo file**: i worker girano da `blob:` URL e il dizionario OCR viene servito da un
   intercettatore di `fetch` interno al worker → funziona anche da `file://`, senza server.
-- **Parser**: usa le coordinate del testo PDF per ricostruire la tabella voci (colonne
-  IMPORTO BASE / RIFERIMENTO / TRATTENUTE / COMPETENZE), riconosce esplicitamente i layout
-  **Jet HR** e **Zucchetti** (incluse le loro abbreviazioni e particolarità) e ha un fallback
-  generico per altri software (TeamSystem, Inaz, ADP…) + testo OCR. Il filtro strutturale
-  distingue le voci economiche da calendario presenze, legende e righe informative.
+- **Parser**: usa coordinate e testo PDF, ricostruisce tabelle anche senza codici, legge
+  layout a etichette, raccoglie più candidati per i campi e li risolve per contesto e
+  quadratura. Il filtro strutturale distingue voci economiche da presenze, legende,
+  progressivi e righe informative.
 - **Dizionario ibrido**: prima usa i codici paga noti, poi famiglie semantiche e abbreviazioni
   comuni, infine il lato contabile della riga (competenza, trattenuta o dato). Una causale
   proprietaria rimane visibile con la sua descrizione originale senza essere chiamata
   genericamente “voce non in dizionario”.
+- **Aggiornare i codici CNEL**: `node scripts/update-cnel.mjs`; il file generato conserva
+  soltanto metadati contrattuali pubblici e viene poi inglobato nella PWA.
 - **Ricompilare dopo una modifica**: `node build.mjs` (serve solo Node.js). Su GitHub il
   workflow Pages esegue automaticamente la build prima di ogni pubblicazione.
 
@@ -345,7 +393,7 @@ BustaChiara/
   (Turismo H052, giugno 2026): 27/27 voci, totali, TFR, ratei e progressivi estratti;
   tutti i ricalcoli (IVS, IRPEF 2026, detrazioni, cuneo, detassazione rinnovi, quota TFR,
   divisore 172, ferie in ore/giorni, ROL e maggiorazione festiva 20%) coerenti.
-- Test di regressione: `node tests/parser.test.mjs`.
+- Test di regressione multi-layout: `node tests/parser.test.mjs`.
 - App verificata in **Chromium** e **WebKit/Safari** su protocollo `file://` (Playwright):
   caricamento, lettura PDF, OCR inglobato e archivio locale funzionanti, zero errori console.
 - UI verificata su viewport desktop e mobile (375×812).
