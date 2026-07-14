@@ -35,7 +35,23 @@ function primaFrase(t) { const i = (t || '').indexOf('. '); return i > 20 ? t.sl
 const STORE_KEY = 'bustachiara_v1';
 const Store = {
   data: { records: [], customCcnl: [], prefs: { modo: 'dettagliato' } },
-  load() { try { const d = JSON.parse(localStorage.getItem(STORE_KEY)); if (d && Array.isArray(d.records)) { this.data = Object.assign(this.data, d); this.data.prefs = Object.assign({ modo: 'dettagliato' }, d.prefs); } } catch (e) { /* dati corrotti: si riparte */ } },
+  load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(STORE_KEY));
+      if (d && Array.isArray(d.records)) {
+        this.data = Object.assign(this.data, d);
+        this.data.prefs = Object.assign({ modo: 'dettagliato' }, d.prefs);
+        this.data.records = this.data.records.map(record => {
+          Parser.ripulisciRecord(record);
+          if (!record.ccnlId) {
+            const contract = Parser.trovaCcnl(record, CCNL_DB);
+            if (contract) record.ccnlId = contract.id;
+          }
+          return record;
+        });
+      }
+    } catch (e) { /* dati corrotti: si riparte */ }
+  },
   save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(this.data)); } catch (e) { toast('Salvataggio non riuscito: spazio esaurito? Esporta i dati.'); } },
 };
 function allCcnl() { return [...(Store.data.customCcnl || []).map(reviveCustom), ...CCNL_DB]; }
@@ -97,9 +113,7 @@ function vociInfoHtml(v) {
 
 /* ---------- spiegazione voci ---------- */
 function spiegaVoce(v) {
-  if (v.codice && VOCI_CODICI[v.codice]) return VOCI_CODICI[v.codice];
-  for (const p of VOCI_PATTERN) if (p.re.test(v.descrizione || '')) return p;
-  return { nome: 'Voce non in dizionario', cat: v.trattenuta != null ? 'trattenuta' : 'competenza', cosa: 'Voce non standard: probabilmente specifica dell’azienda o del software paghe (indennità interne, premi, rimborsi particolari). Non è per forza un problema, ma hai il diritto di sapere cos’è: chiedi all’ufficio paghe come si calcola e da quale accordo deriva.', controlla: 'Se ricorre ogni mese, fattela spiegare una volta per tutte.' };
+  return classificaVoce(v);
 }
 
 /* ---------- navigazione ---------- */
@@ -409,7 +423,7 @@ function scoreEstrazione(r) {
   if (r.ccnl && r.ccnl.cnel) s += 2;
   return s;
 }
-const CAMPI_SCALARI = ['periodo', 'azienda.nome', 'azienda.cf', 'dipendente.nome', 'dipendente.cf', 'dipendente.livello', 'dipendente.qualifica', 'dipendente.dataAssunzione', 'ccnl.cnel', 'ccnl.descrizione', 'elementi.pagaBase', 'elementi.superminimo', 'elementi.contingenza', 'elementi.totale', 'orario.oreOrdinarie', 'totali.competenze', 'totali.trattenute', 'totali.arrotondamento', 'totali.netto', 'tfr.retribUtile', 'tfr.quotaMese', 'tfr.fondo3112', 'tfr.quotaAnno', 'tfr.rivalutazione', 'tfr.aFondi', 'progressivi.impInps', 'progressivi.impIrpef', 'progressivi.irpefPagata', 'ratei.ferie', 'ratei.permessi'];
+const CAMPI_SCALARI = ['periodo', 'azienda.nome', 'azienda.cf', 'dipendente.nome', 'dipendente.cf', 'dipendente.livello', 'dipendente.qualifica', 'dipendente.dataAssunzione', 'ccnl.cnel', 'ccnl.descrizione', 'elementi.pagaBase', 'elementi.superminimo', 'elementi.contingenza', 'elementi.totale', 'orario.oreOrdinarie', 'orario.giorniLavorati', 'orario.pagaOraria', 'orario.pagaGiornaliera', 'totali.competenze', 'totali.trattenute', 'totali.arrotondamento', 'totali.netto', 'tfr.retribUtile', 'tfr.quotaMese', 'tfr.fondo3112', 'tfr.quotaAnno', 'tfr.rivalutazione', 'tfr.aFondi', 'progressivi.impInps', 'progressivi.impIrpef', 'progressivi.irpefPagata', 'ratei.ferie', 'ratei.permessi'];
 function unisciEstrazioni(a, b) {
   const [base, altro] = scoreEstrazione(a.record) >= scoreEstrazione(b.record) ? [a, b] : [b, a];
   for (const p of CAMPI_SCALARI) {
@@ -461,6 +475,7 @@ function emptyRecord() {
 }
 function startVerifica(record, warnings) {
   if (!record.id) record.id = uid();
+  Parser.ripulisciRecord(record);
   record.meta = record.meta || { fonte: 'manuale' };
   record.meta.qualita = Parser.valutaQualita(record);
   const hit = Parser.trovaCcnl(record, CCNL_DB, Store.data.customCcnl.map(reviveCustom));
@@ -477,6 +492,7 @@ const FIELD_GROUPS = [
   { titolo: 'Elementi della retribuzione (mensili)', info: 'elementi', fields: [
     ['elementi.pagaBase', 'Paga base €'], ['elementi.contingenza', 'Contingenza €'], ['elementi.superminimo', 'Superminimo €'],
     ['elementi.scatti', 'Scatti anzianità €'], ['elementi.totale', 'Totale elementi €'], ['orario.oreOrdinarie', 'Ore ordinarie lavorate'],
+    ['orario.giorniLavorati', 'Giorni lavorati'], ['orario.pagaOraria', 'Tariffa oraria €'], ['orario.pagaGiornaliera', 'Tariffa giornaliera €'],
   ]},
   { titolo: 'Totali del mese', info: 'netto', fields: [
     ['totali.competenze', 'Totale competenze €'], ['totali.trattenute', 'Totale trattenute €'], ['totali.arrotondamento', 'Arrotondamento €'], ['totali.netto', 'NETTO €'],
@@ -582,9 +598,13 @@ function liveQuadratura() {
   const sumT = r.voci.reduce((s, v) => s + (v.trattenuta || 0), 0);
   let html = `<p class="muted small">Somma voci → competenze <b>${fmtEur(sumC)}</b> € · trattenute <b>${fmtEur(sumT)}</b> €</p>`;
   if (t.competenze != null && t.trattenute != null && t.netto != null) {
-    const atteso = t.competenze - t.trattenute + (t.arrotondamento || 0);
-    const ok = Math.abs(atteso - t.netto) <= 0.02;
-    html += `<div class="finding ${ok ? 'ok' : 'alert'}"><span class="lvchip ${ok ? 'ok' : 'alert'}">${ok ? 'OK' : 'Attenzione'}</span><div><p>${ok ? 'Il netto quadra con i totali.' : `Competenze − trattenute + arrotondamento = <b>${fmtEur(atteso)}</b> €, ma il netto indicato è <b>${fmtEur(t.netto)}</b> €.`}</p></div></div>`;
+    const quadratura = Parser.quadraturaTotali(t);
+    const message = quadratura.ok
+      ? (quadratura.modalita === 'netto-arrotondato'
+        ? `Il netto è coerente: competenze − trattenute = ${fmtEur(quadratura.base)} €, scarto di arrotondamento ${fmtEur(quadratura.scarto)} €.`
+        : 'Il netto quadra con i totali.')
+      : `Il risultato più vicino è <b>${fmtEur(quadratura.atteso)}</b> €, ma il netto indicato è <b>${fmtEur(t.netto)}</b> €.`;
+    html += `<div class="finding ${quadratura.ok ? 'ok' : 'alert'}"><span class="lvchip ${quadratura.ok ? 'ok' : 'alert'}">${quadratura.ok ? 'OK' : 'Attenzione'}</span><div><p>${message}</p></div></div>`;
   }
   $('#live-quadratura').innerHTML = html;
 }
@@ -686,7 +706,7 @@ function renderDettaglioCompleto(el, r, ccnl, findings) {
     <div class="kpi"><div class="v">${fmtEur(r.totali.competenze)} €</div><div class="l">Competenze ${iBtn('competenza')}</div></div>
     <div class="kpi"><div class="v">${fmtEur(r.totali.trattenute)} €</div><div class="l">Trattenute ${iBtn('trattenuta')}</div></div>
     ${r.tfr && r.tfr.fondo3112 != null ? `<div class="kpi"><div class="v">${fmtEur(r.tfr.fondo3112)} €</div><div class="l">TFR al 31/12 ${iBtn('tfr')}</div></div>` : ''}
-    ${r.ratei && r.ratei.ferie ? `<div class="kpi"><div class="v">${fmtEur(r.ratei.ferie.saldo, 1)}</div><div class="l">Ferie residue (gg) ${iBtn('ferie')}</div></div>` : ''}
+    ${r.ratei && r.ratei.ferie ? `<div class="kpi"><div class="v">${fmtEur(r.ratei.ferie.saldo, 1)}</div><div class="l">Ferie residue (${/^(?:ORE|ORA|H)$/i.test(r.ratei.ferie.unita || '') ? 'h' : 'gg'}) ${iBtn('ferie')}</div></div>` : ''}
     ${r.ratei && r.ratei.permessi ? `<div class="kpi"><div class="v">${fmtEur(r.ratei.permessi.saldo, 1)}</div><div class="l">Permessi residui (h) ${iBtn('rol')}</div></div>` : ''}
   </div>
   ${sez('Le voci, spiegate una per una', `<p class="muted small">Tocca la “i” di una voce per capire cos’è, come si calcola e cosa controllare.</p>${vociTableHTML(r)}`)}
@@ -715,7 +735,7 @@ function renderDettaglioSemplice(el, r, ccnl, findings) {
     <h2>La tua busta di ${esc(periodoLabel(r.periodo))}</h2>
     <div class="netto-big">${fmtEur(t.netto)} €</div>
     <p>Questi sono i soldi arrivati sul tuo conto (il <b>netto</b>${iBtn('netto')}). Lo stipendio di partenza era <b>${fmtEur(t.competenze)} €</b>${iBtn('competenza')}; da lì sono stati tolti <b>${fmtEur(t.trattenute)} €</b>${iBtn('trattenuta')} tra tasse, contributi per la pensione e piccole quote. Per vedere dove vanno i tuoi soldi, tocca <b>Riassunto</b> in alto.</p>
-    ${r.ratei && r.ratei.ferie ? `<p class="muted">Ferie ancora da usare: <b>${fmtEur(r.ratei.ferie.saldo, 1)} giorni</b>${iBtn('ferie')} · Permessi: <b>${fmtEur(r.ratei.permessi ? r.ratei.permessi.saldo : 0, 1)} ore</b>${iBtn('rol')}</p>` : ''}
+    ${r.ratei && r.ratei.ferie ? `<p class="muted">Ferie ancora da usare: <b>${fmtEur(r.ratei.ferie.saldo, 1)} ${/^(?:ORE|ORA|H)$/i.test(r.ratei.ferie.unita || '') ? 'ore' : 'giorni'}</b>${iBtn('ferie')} · Permessi: <b>${fmtEur(r.ratei.permessi ? r.ratei.permessi.saldo : 0, 1)} ore</b>${iBtn('rol')}</p>` : ''}
     <div class="btnrow"><button class="ghost" id="btn-edit">Modifica dati</button></div>
   </div>
   <div class="card">
@@ -786,7 +806,7 @@ function rateiCard(r) {
   return sez(`Ferie e permessi (ratei) ${iBtn('rateo')}`,
   `<p class="muted small">Quanto riposo pagato hai accumulato, usato e quanto te ne resta.</p>
   <div class="kv" style="grid-template-columns:1fr">
-    ${riga('Ferie', rt.ferie, 'giorni', 'ferie')}
+    ${riga('Ferie', rt.ferie, /^(?:ORE|ORA|H)$/i.test((rt.ferie && rt.ferie.unita) || '') ? 'ore' : 'giorni', 'ferie')}
     ${riga('Permessi (ROL)', rt.permessi, 'ore', 'rol')}
     ${riga('Ex festività', rt.exFestivita, 'ore', 'exfestivita')}
   </div>`);

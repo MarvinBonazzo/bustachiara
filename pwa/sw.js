@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v4-parser-multilayout';
+const CACHE = 'bustachiara-v5-parser-semantico';
 const ASSETS = [
   './',
   './index.html',
