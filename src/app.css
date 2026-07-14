@@ -1,0 +1,184 @@
+/* ============ Tema unico: chiaro, minimale, accento verde ============
+   Regola: SOLO i bottoni hanno angoli stondati; ogni riquadro è dritto. */
+:root {
+  --bg: #f5f5f7; --card: #ffffff; --ink: #1d1d1f; --muted: #6e6e73;
+  --brand: #1d7a4a; --brand-2: #166039; --brand-ink: #ffffff;
+  --brand-soft: #eaf4ee; --line: #e4e4e8; --chip: #f2f2f4;
+  --ok: #257a4d; --ok-bg: #eaf5ef; --info: #2c62b8; --info-bg: #edf2fa;
+  --warn: #96690a; --warn-bg: #fbf4de; --alert: #b3261e; --alert-bg: #fceceb;
+  --r-btn: 10px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif; padding-bottom: 84px; -webkit-font-smoothing: antialiased; }
+
+/* ============ Barra superiore ============ */
+#topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 18px 20px 6px; max-width: 960px; margin: 0 auto; }
+.brand { display: flex; gap: 10px; align-items: center; }
+.logo { font-size: 28px; }
+#topbar h1 { margin: 0; font-size: 21px; font-weight: 700; color: var(--ink); letter-spacing: -.2px; }
+#topbar p { margin: 0; font-size: 12.5px; color: var(--muted); }
+.topctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#privacy-badge { color: var(--brand); background: var(--brand-soft); font-size: 12px; font-weight: 600; border-radius: 20px; padding: 5px 11px; white-space: nowrap; cursor: help; }
+.seg { display: inline-flex; background: var(--chip); border-radius: var(--r-btn); padding: 2px; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 12px; cursor: pointer; border-radius: 8px; }
+.seg button.active { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 700; }
+.seg-btn { border: 0; background: var(--chip); color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: var(--r-btn); cursor: pointer; }
+.seg-btn:hover { background: var(--brand-soft); color: var(--brand); }
+
+/* ============ Schede ============ */
+#tabs { display: flex; gap: 2px; max-width: 960px; margin: 8px auto 0; padding: 0 14px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.tab { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 500; padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; margin-bottom: -1px; }
+.tab:hover { color: var(--ink); }
+.tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+body.modo-semplificato .tab[data-view="impostazioni"] { display: none; }
+
+main { max-width: 960px; margin: 0 auto; padding: 18px 14px 30px; }
+.view { display: none; }
+.view.active { display: block; animation: fade .16s ease; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ============ Riquadri: linee dritte, bordi sottili ============ */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 0; padding: 20px 22px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 10px; font-size: 17px; font-weight: 700; letter-spacing: -.2px; color: var(--ink); }
+.card h3 { margin: 16px 0 6px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+/* sezioni richiudibili del Dettaglio */
+details.sez { padding: 0; }
+details.sez > summary { list-style: none; cursor: pointer; padding: 16px 22px; display: flex; align-items: center; gap: 9px; }
+details.sez > summary::-webkit-details-marker { display: none; }
+details.sez > summary::before { content: "›"; color: var(--muted); font-size: 17px; font-weight: 600; transition: transform .15s; line-height: 1; }
+details.sez[open] > summary::before { transform: rotate(90deg); }
+details.sez > summary h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--ink); display: inline; }
+details.sez > .sez-body { padding: 0 22px 18px; }
+.muted { color: var(--muted); font-size: 13.5px; }
+.small { font-size: 12.5px; }
+a { color: var(--brand); }
+
+/* ============ Bottoni: gli unici elementi stondati ============ */
+button.primary, button.ghost, button.danger { font: inherit; font-size: 15px; font-weight: 600; border-radius: var(--r-btn); padding: 10px 18px; cursor: pointer; border: 0; }
+button.primary { background: var(--brand); color: var(--brand-ink); }
+button.primary:hover { background: var(--brand-2); }
+button.ghost { background: var(--chip); color: var(--brand); }
+button.ghost:hover { background: var(--brand-soft); }
+button.danger { background: var(--chip); color: var(--alert); }
+button.danger:hover { background: var(--alert-bg); }
+button:disabled { opacity: .5; cursor: default; }
+.btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+/* ============ Pulsante info "i" e popover ============ */
+.ibtn { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid #c6c6cb; color: var(--muted); background: transparent; font: italic 700 11px/1 Georgia, serif; cursor: pointer; vertical-align: middle; margin-left: 5px; padding: 0; flex: none; }
+.ibtn:hover { border-color: var(--brand); color: var(--brand); }
+#popover[hidden] { display: none; }
+#popover { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 18px; }
+#popover-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .35); }
+#popover-card { position: relative; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 0; box-shadow: 0 18px 50px rgba(0,0,0,.22); max-width: 460px; width: 100%; max-height: 76vh; overflow: auto; padding: 20px 22px; }
+#popover-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+#popover-head h3 { margin: 0 0 8px; font-size: 16px; font-weight: 700; color: var(--ink); }
+#popover-close { border: 0; background: var(--chip); color: var(--muted); width: 28px; height: 28px; border-radius: 50%; font-size: 17px; cursor: pointer; line-height: 1; flex: none; }
+#popover-body { font-size: 14.5px; }
+#popover-body p { margin: 7px 0; }
+
+/* ============ Modulo verifica ============ */
+#dropzone { border: 1.5px dashed #c6c6cb; border-radius: 0; padding: 36px 18px; text-align: center; cursor: pointer; background: var(--card); transition: border-color .15s, background .15s; }
+#dropzone:hover, #dropzone.drag { border-color: var(--brand); background: var(--brand-soft); }
+.dz-icon { width: 44px; height: 56px; margin: 0 auto 10px; border: 2px solid var(--brand); position: relative; }
+.dz-icon::before { content: ""; position: absolute; left: 8px; top: 12px; width: 22px; height: 2.5px; background: var(--brand); box-shadow: 0 9px 0 var(--brand), 0 18px 0 var(--brand); }
+progress { width: 100%; height: 8px; accent-color: var(--brand); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+label.field input, label.field select { font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 0; padding: 8px 10px; min-width: 0; }
+label.field input:focus, label.field select:focus { outline: 2px solid var(--brand); border-color: transparent; }
+
+.tablewrap { overflow-x: auto; margin: 8px -6px; padding: 0 6px; }
+table.voci { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13.5px; }
+table.voci th { text-align: left; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; padding: 7px 8px; border-bottom: 1px solid var(--ink); white-space: nowrap; }
+table.voci td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.voci td.num, table.voci th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.voci input { width: 90px; font: inherit; font-size: 13px; text-align: right; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 0; padding: 4px 6px; }
+table.voci input.desc { width: 200px; text-align: left; }
+table.voci input.code { width: 64px; text-align: left; }
+.badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 0; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+.badge.comp { background: var(--ok-bg); color: var(--ok); }
+.badge.tratt { background: var(--alert-bg); color: var(--alert); }
+.badge.dato { background: var(--info-bg); color: var(--info); }
+
+/* ============ Esiti dei controlli ============ */
+.finding { display: flex; gap: 10px; border-left: 3px solid; border-radius: 0; padding: 11px 13px; margin-bottom: 8px; font-size: 14px; }
+.finding h4 { margin: 0 0 2px; font-size: 14px; }
+.finding p { margin: 0; }
+.finding .formula { font-family: ui-monospace, "SF Mono", monospace; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.finding.ok { border-color: var(--ok); background: var(--ok-bg); }
+.finding.info { border-color: var(--info); background: var(--info-bg); }
+.finding.warn { border-color: var(--warn); background: var(--warn-bg); }
+.finding.alert { border-color: var(--alert); background: var(--alert-bg); }
+.lvchip { flex: none; align-self: flex-start; font-size: 10px; font-weight: 700; letter-spacing: .5px; border-radius: 0; padding: 3px 7px; margin-top: 2px; text-transform: uppercase; }
+.lvchip.ok { background: var(--ok); color: #fff; }
+.lvchip.info { background: var(--info); color: #fff; }
+.lvchip.warn { background: var(--warn); color: #fff; }
+.lvchip.alert { background: var(--alert); color: #fff; }
+.fonti-line { margin-top: 5px; font-size: 12px; }
+
+details.gen { border: 1px solid var(--line); border-radius: 0; background: var(--card); padding: 12px 22px; margin-bottom: 16px; }
+details.gen > summary { font-weight: 700; font-size: 16px; color: var(--ink); cursor: pointer; }
+
+/* ============ Archivio (dentro Importa) ============ */
+.rec-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--card); border-bottom: 1px solid var(--line); padding: 13px 2px; cursor: pointer; }
+.rec-card:hover .per { color: var(--brand); }
+.rec-card .per { font-weight: 600; font-size: 15px; }
+.rec-card .netto { font-size: 17px; font-weight: 700; color: var(--brand); font-variant-numeric: tabular-nums; }
+.rec-card .delta { font-size: 12px; font-weight: 500; }
+.delta.up { color: var(--ok); } .delta.down { color: var(--alert); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 0; padding: 14px 16px; }
+.kpi .v { font-size: 22px; font-weight: 700; letter-spacing: -.3px; color: var(--brand); font-variant-numeric: tabular-nums; }
+.kpi .l { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; display: flex; align-items: center; margin-top: 2px; }
+svg.chart { width: 100%; height: 150px; display: block; }
+
+/* ============ Dettaglio ============ */
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 20px; font-size: 14.5px; }
+.kv div b { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; display: flex; align-items: center; }
+details.consiglio, details.legge { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 12px 2px; margin-bottom: 0; background: transparent; }
+details.consiglio summary, details.legge summary { font-weight: 600; font-size: 15px; cursor: pointer; color: var(--ink); }
+details.consiglio summary:hover, details.legge summary:hover { color: var(--brand); }
+details p { margin: 9px 0; font-size: 14px; }
+.fonte-item { padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+
+/* voci in modalità semplificata */
+.voce-s { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 11px 2px; border-bottom: 1px solid var(--line); }
+.voce-s .vs-desc { flex: 1; }
+.voce-s .vs-nome { font-weight: 600; }
+.voce-s .vs-spiega { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.voce-s .vs-importo { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vs-importo.plus { color: var(--ok); }
+.vs-importo.minus { color: var(--alert); }
+.netto-big { font-size: 40px; font-weight: 700; letter-spacing: -.8px; color: var(--brand); font-variant-numeric: tabular-nums; }
+
+footer { max-width: 960px; margin: 22px auto 0; padding: 0 18px 26px; color: var(--muted); font-size: 12px; }
+
+#toast { position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 0; padding: 11px 20px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 120; max-width: 90vw; }
+#toast.show { opacity: .96; }
+
+@media (max-width: 640px) {
+  #tabs { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; background: var(--card); border-top: 1px solid var(--line); border-bottom: 0; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); z-index: 50; gap: 6px; }
+  .tab { background: var(--chip); color: var(--ink); border-radius: var(--r-btn); border-bottom: 0; font-size: 13px; font-weight: 600; padding: 11px 14px; flex: 0 0 auto; margin-bottom: 0; }
+  .tab.active { background: var(--brand); color: var(--brand-ink); }
+  #topbar p { display: none; }
+  body { padding-bottom: 106px; }
+  .netto-big { font-size: 32px; }
+  .card, details.gen { padding: 16px; }
+  details.sez > summary { padding: 14px 16px; }
+  details.sez > .sez-body { padding: 0 16px 14px; }
+  /* tabella voci: tutto dentro lo schermo, niente scroll orizzontale */
+  #view-dettaglio table.voci { min-width: 0; font-size: 12px; width: 100%; }
+  #view-dettaglio table.voci th, #view-dettaglio table.voci td { padding: 5px 3px; }
+  #view-dettaglio table.voci th { white-space: normal; font-size: 10px; }
+  #view-dettaglio table.voci td.num { white-space: normal; }
+  #view-dettaglio .col-code, #view-dettaglio .col-base, #view-dettaglio .col-rif { display: none; }
+  #view-dettaglio table.voci .badge { display: none; }
+  #view-dettaglio .tablewrap { overflow-x: hidden; }
+}
+@media print {
+  #tabs, .topctrl, .btnrow, #dropzone { display: none !important; }
+  .card { border: 0; break-inside: avoid; }
+}

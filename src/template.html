@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: 'self'; style-src 'unsafe-inline'; img-src data: blob: 'self'; font-src data:; connect-src blob: data: 'self'; worker-src blob: 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#1d7a4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="BustaChiara">
+<title>BustaChiara — la tua busta paga, spiegata. 100% offline</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<header id="topbar">
+  <div class="brand"><span class="logo">🧾</span><div><h1>BustaChiara</h1><p>La busta paga, spiegata — tutto resta sul tuo dispositivo</p></div></div>
+  <div class="topctrl">
+    <div class="seg" id="modo-seg" role="group" aria-label="Modalità">
+      <button data-modo="semplificato">Semplificato</button>
+      <button data-modo="dettagliato">Dettagliato</button>
+    </div>
+    <button id="riassunto-btn" class="seg-btn" title="Il tuo mese in parole semplicissime">Riassunto</button>
+    <button id="progetto-btn" class="seg-btn" title="Perché esiste questa app">Il progetto</button>
+    <span id="privacy-badge" title="Questa pagina ha una Content-Security-Policy che blocca OGNI connessione di rete: i tuoi dati non possono uscire.">🔒 100% locale</span>
+  </div>
+</header>
+
+<nav id="tabs">
+  <button data-view="dettaglio" class="tab">Dettaglio</button>
+  <button data-view="guida" class="tab">Guida e fonti</button>
+  <button data-view="consigli" class="tab">Curiosità</button>
+  <button data-view="impostazioni" class="tab">Altro</button>
+  <button data-view="importa" class="tab">Importa</button>
+</nav>
+
+<main>
+  <section id="view-importa" class="view"></section>
+  <section id="view-verifica" class="view"></section>
+  <section id="view-dettaglio" class="view"></section>
+  <section id="view-consigli" class="view"></section>
+  <section id="view-guida" class="view"></section>
+  <section id="view-progetto" class="view"></section>
+  <section id="view-impostazioni" class="view"></section>
+</main>
+
+<footer>
+  <p><strong>BustaChiara è uno strumento informativo</strong>: non sostituisce un consulente del lavoro, un CAF o un sindacato. I valori dei CCNL contrassegnati come "da verificare" sono indicativi e vanno controllati sul testo ufficiale (link forniti). Nessun dato lascia questo dispositivo.</p>
+</footer>
+
+<div id="popover" hidden>
+  <div id="popover-backdrop"></div>
+  <div id="popover-card" role="dialog" aria-modal="true">
+    <div id="popover-head"><h3 id="popover-title"></h3><button id="popover-close" aria-label="Chiudi">×</button></div>
+    <div id="popover-body"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>/*__PDF_JS__*/</script>
+<script>/*__TESS_JS__*/</script>
+<script>
+const PDF_WORKER_B64 = "__PDF_WORKER_B64__";
+const TESS_WORKER_B64 = "__TESS_WORKER_B64__";
+const TESS_CORE_B64 = "__TESS_CORE_B64__";
+const ITA_B64 = "__ITA_B64__";
+</script>
+<script>/*__DATA__*/</script>
+<script>/*__PARSER__*/</script>
+<script>/*__CHECKS__*/</script>
+<script>/*__UI__*/</script>
+</body>
+</html>
