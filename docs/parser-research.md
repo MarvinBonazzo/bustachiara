@@ -15,6 +15,9 @@ regressione riproduce quindi famiglie strutturali, non documenti o identità rea
 | NoiPA | sezioni a etichette, competenze fisse/accessorie, ritenute previdenziali e fiscali |
 | Lavoro domestico | impaginazione semplice, vitto/alloggio, contributi a fasce, TFR e netto |
 | Edilizia / Cassa Edile | GNF, APE, EVR, accantonamenti e trattenute di settore |
+| Agricoltura e marittimo | giornate, compartecipazioni, indennità e sigle di settore |
+| Spettacolo, sport e dirigenti | ENPALS/FPLS, compensi, premi, indennità e fondi dedicati |
+| Cessazione e conguaglio | competenze finali, ferie residue, TFR, arretrati e ricalcoli fiscali |
 | Tabelle senza codice | descrizione e importi riconosciuti dal ruolo delle colonne |
 | Scansione/foto | testo incompleto, rotazione, sfondo irregolare e coordinate OCR rumorose |
 
@@ -31,25 +34,32 @@ testo e numeri inventati: nessun nome, codice fiscale, datore o cedolino reale.
 
 ## Pipeline gratuita e locale
 
-1. **Acquisizione** — pdf.js estrae parole e coordinate dai PDF nativi. Tesseract legge
-   immagini e scansioni interamente nel browser.
-2. **Pre-processing OCR** — ritaglio dei margini chiari, stima dell'inclinazione, rotazione
-   e soglia locale. Se il primo passaggio è debole, viene eseguita una seconda segmentazione
-   e le parole vengono fuse per posizione e affidabilità.
+1. **Acquisizione con provenienza visuale** — pdf.js estrae parole, pagina e coordinate dai
+   PDF nativi. Tesseract legge immagini e scansioni interamente nel browser. La verifica può
+   quindi evidenziare sul documento l'origine del campo.
+2. **OCR selettivo e pre-processing** — nei PDF nativi Tesseract interviene soltanto sulle
+   pagine con testo insufficiente. Foto e scansioni vengono corrette per orientamento,
+   prospettiva, margini e inclinazione; se il primo passaggio è debole viene eseguita una
+   seconda segmentazione e le parole vengono fuse per posizione e affidabilità.
 3. **Normalizzazione** — separatori decimali, date, abbreviazioni, intestazioni equivalenti,
    codici numerici/alfanumerici e righe senza codice diventano una rappresentazione comune.
 4. **Candidati e provenienza** — ogni totale possibile conserva valore, pagina, metodo e
    confidenza. Il parser non si ferma alla prima etichetta trovata.
-5. **Risoluzione** — le combinazioni di competenze, trattenute, arrotondamento e netto
-   vengono confrontate; quadratura e coerenza globale premiano la combinazione plausibile.
-6. **Classificazione** — codici noti, dizionario semantico, pattern di settore e lato
-   contabile stabiliscono nome e tipo della voce. La descrizione originale resta sempre
-   disponibile.
+5. **Risoluzione globale** — le combinazioni di competenze, trattenute, arrotondamento e
+   netto vengono confrontate con somme delle voci, calcolo delle righe, ratei, imponibili,
+   paga oraria e TFR. Le alternative vicine restano selezionabili in verifica.
+6. **Classificazione semantica e settoriale** — codici noti, sinonimi, abbreviazioni,
+   somiglianza anche con refusi, moduli di settore e lato contabile stabiliscono nome e tipo
+   della voce. La descrizione originale resta sempre disponibile.
 7. **Apprendimento locale** — quando l'utente corregge una causale, la mappatura viene
    salvata nel suo browser per quel software paghe. Non è telemetria e non lascia il
    dispositivo.
-8. **Verifica umana** — campi deboli o derivati sono marcati. Una scansione illeggibile non
-   viene trasformata in una falsa certezza.
+8. **CCNL assistito** — codice CNEL, titolo, settore e terminologia producono suggerimenti
+   motivati. In caso di ambiguità decide l'utente.
+9. **Verifica umana** — campi deboli o derivati sono marcati e collegati alla loro zona sul
+   documento. Una scansione illeggibile non viene trasformata in una falsa certezza.
+10. **Archivio multi-documento** — tipo, datore e periodo identificano il record, così due
+    datori o un cedolino ordinario e una tredicesima dello stesso mese non si sovrascrivono.
 
 Per il miglioramento delle scansioni sono state seguite le indicazioni ufficiali di
 [Tesseract sull'accuratezza](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html) e
@@ -65,8 +75,9 @@ codice e genera `src/cnel-index.js`. Al 14 luglio 2026 l'indice contiene 2.260 d
 ## Come aggiungere un nuovo formato
 
 1. Non allegare il cedolino reale a una Issue pubblica.
-2. In **Altro**, esportare un fixture senza identità e ricontrollare manualmente descrizioni
-   e importi prima di condividerlo.
+2. In **Altro**, aprire il controllo privacy ed esportare il fixture: identità, estratti
+   testuali e importi originali vengono rimossi o trasformati. Ricontrollare comunque le
+   causali proprietarie prima di condividerlo.
 3. Ridurre il caso alla minima struttura che riproduce l'errore.
 4. Aggiungerlo a `tests/fixtures/general-layouts.json` con i campi attesi.
 5. Correggere una regola generale e lanciare `node tests/parser.test.mjs`.

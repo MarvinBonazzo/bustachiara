@@ -128,20 +128,30 @@ affidabilità:
   TeamSystem/LYNFA/GECOM, INAZ, Centro Paghe/Paghe Open, NoiPA, Sistemi JOB, ADP, SAP,
   Cassa Edile, lavoro domestico e ai cedolini non identificati;
 - confronta tutte le combinazioni plausibili di competenze, trattenute, arrotondamento e
-  netto: questo evita di scambiare un imponibile o un progressivo per un totale del mese;
-- verifica anche il calcolo `quantità × base`, la continuità dei ratei e la plausibilità
-  della paga oraria;
-- per le foto prova ritaglio, raddrizzamento, soglia locale e due modalità OCR, poi fonde le
-  parole usando coordinate e confidenza;
-- mostra in verifica l'affidabilità del documento e dei singoli campi. I dati ricavati o
-  dubbi vengono dichiarati, mai nascosti.
+  netto e le confronta anche con le somme delle singole voci: questo evita di scambiare un
+  imponibile o un progressivo per un totale del mese;
+- verifica il calcolo `quantità × base`, ratei, paga oraria, imponibili, TFR e quadrature
+  globali; se più interpretazioni sono vicine le presenta all'utente senza nasconderle;
+- riconosce il tipo di documento (ordinario, cessazione, tredicesima, quattordicesima,
+  conguaglio, arretrati, premio o rettifica) e permette di conservare più cedolini nello
+  stesso mese, anche per datori diversi;
+- applica moduli terminologici per privato/LUL, NoiPA, domestico, edilizia, agricoltura,
+  marittimo, spettacolo/sportivo, dirigenti e cessazione/conguaglio;
+- combina regole, sinonimi, somiglianza semantica e refusi per spiegare anche abbreviazioni
+  mai viste, lasciando sempre visibile la descrizione originale;
+- per le foto corregge orientamento, prospettiva, margini e inclinazione; nei PDF nativi
+  esegue l'OCR soltanto sulle pagine in cui il testo estratto è insufficiente;
+- nella verifica mostra il documento accanto ai campi: il pulsante sorgente evidenzia la
+  zona da cui arriva il dato. Su mobile ogni riga diventa una scheda verticale leggibile;
+- propone fino a tre CCNL, con punteggio e motivi, senza scegliere automaticamente quando
+  il risultato è ambiguo.
 
 Le correzioni alle causali proprietarie vengono apprese **solo sul dispositivo** e per lo
 specifico software paghe. Dalla volta successiva la stessa descrizione viene classificata
 come competenza, trattenuta o dato con il nome confermato dall'utente. Da **Altro** si può
-anche esportare un fixture privo delle identità principali per contribuire a nuovi test;
-descrizioni e importi possono comunque essere riconoscibili e vanno controllati prima di
-pubblicarlo.
+anche controllare ed esportare un fixture per contribuire a nuovi test: identità, file ed
+estratti della pagina vengono rimossi e gli importi trasformati mantenendo la quadratura.
+Le causali proprietarie restano comunque da rileggere prima di pubblicarlo.
 
 I test di regressione usano esclusivamente dati inventati e riproducono famiglie strutturali
 diverse: LUL privato, Jet HR, Zucchetti, NoiPA, lavoro domestico, edilizia/Cassa Edile,
@@ -359,6 +369,7 @@ BustaChiara/
 │   ├── app.css        ← stile responsive e identità visiva verde del foglio illuminato
 │   ├── data.js        ← FISCO (2024–26), CCNL_DB (20), dizionario voci, GLOSSARIO, LEGGE, FONTI, CONSIGLI
 │   ├── cnel-index.js  ← 1.143 codici ufficiali, file generato automaticamente
+│   ├── parser-sectors.js ← moduli terminologici e rilevamento dei settori
 │   ├── parser.js      ← parser multi-layout, candidati, provenienza e controlli di coerenza
 │   ├── checks.js      ← motore dei controlli
 │   └── ui.js          ← interfaccia, OCR adattivo, apprendimento locale, cronologia, export
@@ -375,8 +386,9 @@ BustaChiara/
   intercettatore di `fetch` interno al worker → funziona anche da `file://`, senza server.
 - **Parser**: usa coordinate e testo PDF, ricostruisce tabelle anche senza codici, legge
   layout a etichette, raccoglie più candidati per i campi e li risolve per contesto e
-  quadratura. Il filtro strutturale distingue voci economiche da presenze, legende,
-  progressivi e righe informative.
+  quadratura globale. Conserva pagina e coordinate per riportare ogni dato alla sua sorgente.
+  Il filtro strutturale distingue voci economiche da presenze, legende, progressivi e righe
+  informative.
 - **Dizionario ibrido**: prima usa i codici paga noti, poi famiglie semantiche e abbreviazioni
   comuni, infine il lato contabile della riga (competenza, trattenuta o dato). Una causale
   proprietaria rimane visibile con la sua descrizione originale senza essere chiamata

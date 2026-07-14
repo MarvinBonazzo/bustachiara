@@ -23,6 +23,7 @@ const parts = {
   '__TESS_CORE_B64__': b64(vend('tesseract-core-simd-lstm.wasm.js')),
   '__ITA_B64__': b64(vend('ita.traineddata.gz')),
   '/*__CNEL_INDEX__*/': jsSafe(readFileSync(src('cnel-index.js'), 'utf8')),
+  '/*__PARSER_SECTORS__*/': jsSafe(readFileSync(src('parser-sectors.js'), 'utf8')),
   '/*__DATA__*/': jsSafe(readFileSync(src('data.js'), 'utf8')),
   '/*__PARSER__*/': jsSafe(readFileSync(src('parser.js'), 'utf8')),
   '/*__CHECKS__*/': jsSafe(readFileSync(src('checks.js'), 'utf8')),

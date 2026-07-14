@@ -36,6 +36,8 @@ function addCandidate(rec, path, value, evidence = {}) {
     method: evidence.method || 'euristica',
     label: evidence.label || '',
     page: evidence.page == null ? null : evidence.page,
+    bbox: evidence.bbox || null,
+    snippet: evidence.snippet || '',
   };
   if (!existing) list.push(item);
   else if (item.confidence > existing.confidence) Object.assign(existing, item);
@@ -50,8 +52,15 @@ function markField(rec, path, evidence = {}) {
     method: evidence.method || 'euristica',
     label: evidence.label || '',
     inferred: !!evidence.inferred,
+    page: evidence.page == null ? (current && current.page != null ? current.page : null) : evidence.page,
+    bbox: evidence.bbox || (current && current.bbox) || null,
+    snippet: evidence.snippet || (current && current.snippet) || '',
+    confirmed: !!evidence.confirmed,
   };
   if (!current || next.confidence >= current.confidence) rec.meta.fields[path] = next;
+  else if ((next.bbox || next.snippet) && !current.bbox) Object.assign(current, {
+    page: next.page, bbox: next.bbox, snippet: next.snippet,
+  });
 }
 
 function itNum(value) {
@@ -116,7 +125,7 @@ function buildLines(items, tol = 3.5) {
       row = { y: item.y, cells: [] };
       rows.push(row);
     }
-    row.cells.push({ x: Number(item.x) || 0, w: Number(item.w) || 0, str });
+    row.cells.push({ x: Number(item.x) || 0, y: Number(item.y) || 0, w: Number(item.w) || 0, h: Math.abs(Number(item.h) || 10), str });
   }
   rows.sort((a, b) => b.y - a.y);
   for (const row of rows) {
@@ -126,6 +135,19 @@ function buildLines(items, tol = 3.5) {
     row.plain = plain(row.text);
   }
   return rows;
+}
+
+function lineBBox(line) {
+  const cells = line && line.cells || [];
+  if (!cells.length) return null;
+  const x = Math.min(...cells.map(cell => cell.x));
+  const right = Math.max(...cells.map(cell => cell.x + (cell.w || 0)));
+  const h = Math.max(8, ...cells.map(cell => cell.h || 0));
+  return { x, y: line.y - h * .25, w: Math.max(6, right - x), h: h * 1.45 };
+}
+
+function visualEvidence(line) {
+  return line ? { page: line.page == null ? null : line.page, bbox: lineBBox(line), snippet: normalizzaTesto(line.text).slice(0, 180) } : {};
 }
 
 function findLine(lines, re, from = 0) {
@@ -217,6 +239,18 @@ function parsePeriodo(text) {
   return null;
 }
 
+function rilevaTipoCedolino(text) {
+  const p = plain(text);
+  if (/CESSAZIONE|FINE RAPPORTO|LIQUIDAZIONE TFR|INDENNITA SOSTITUTIVA.*PREAVVISO/.test(p)) return 'cessazione';
+  if (/CEDOLINO.*(?:13|TREDICESIMA)|TREDICESIMA MENSILITA|GRATIFICA NATALIZIA/.test(p) && !/RATEO|MATURAT/.test(p)) return 'tredicesima';
+  if (/CEDOLINO.*(?:14|QUATTORDICESIMA)|QUATTORDICESIMA MENSILITA/.test(p) && !/RATEO|MATURAT/.test(p)) return 'quattordicesima';
+  if (/CONGUAGLIO (?:FISCALE|PREVIDENZIALE|ANNUALE)|RICALCOLO IRPEF/.test(p)) return 'conguaglio';
+  if (/CEDOLINO.*ARRETRAT|ARRETRATI (?:CCNL|CONTRATTUALI)|DIFFERENZE RETRIBUTIVE/.test(p)) return 'arretrati';
+  if (/CEDOLINO.*PREMIO|PREMIO (?:DI RISULTATO|PRODUZIONE)|EROGAZIONE PREMIO/.test(p)) return 'premio';
+  if (/RETTIFICA|CEDOLINO SOSTITUTIVO|STORNO CEDOLINO/.test(p)) return 'rettifica';
+  return 'ordinario';
+}
+
 function rilevaSoftware(text) {
   const p = plain(text);
   if (/JET\s*HR|MESE DI RETRIBUZIONE/.test(p) && /TI RIMANGONO|CAUSALE PRESENZE/.test(p)) return 'Jet HR';
@@ -235,6 +269,7 @@ function rilevaSoftware(text) {
 
 function recordVuoto(fonte, software) {
   return {
+    documento: { tipo: 'ordinario' },
     periodo: null,
     azienda: {},
     dipendente: {},
@@ -246,7 +281,7 @@ function recordVuoto(fonte, software) {
     progressivi: {},
     ratei: {},
     totali: {},
-    meta: { fonte, software, inferiti: [], fields: {}, candidates: {}, consistency: {} },
+    meta: { fonte, software, settore: null, inferiti: [], fields: {}, candidates: {}, consistency: {}, reconciliation: {}, pageSizes: [] },
   };
 }
 
@@ -535,7 +570,8 @@ function parseTableRow(line, heads) {
   }
   if (!voce.descrizione && voce.base == null && voce.rifQta == null && voce.trattenuta == null && voce.competenza == null) return null;
   const amount = voce.competenza ?? voce.trattenuta;
-  const calculated = voce.base != null && voce.rifQta != null ? Math.abs(voce.base * voce.rifQta) : null;
+  const calculated = voce.base != null && voce.rifQta != null
+    ? Math.abs(voce.base * voce.rifQta * (voce.rifUnita === '%' ? .01 : 1)) : null;
   const rowMatches = amount != null && calculated != null && Math.abs(Math.abs(amount) - calculated) <= Math.max(0.06, Math.abs(amount) * 0.015);
   voce.descrizioneOriginale = voce.descrizione;
   voce.meta = {
@@ -543,6 +579,7 @@ function parseTableRow(line, heads) {
     confidence: Math.min(0.98, 0.48 + (voce.codice ? 0.12 : 0) + (voce.descrizione ? 0.14 : 0)
       + (amount != null ? 0.12 : 0) + (rowMatches ? 0.12 : 0)),
     rowMatches,
+    visual: visualEvidence(line),
   };
   return voce;
 }
@@ -634,18 +671,26 @@ function extractLabeledFinancialLines(rec, allLines) {
         .map(cell => cell.str).join(' '));
       description = description.replace(/^\s*[A-Z0-9./_-]{1,12}\s+(?=[A-Za-zÀ-ù])/, '').trim();
       if (!description || !economicLabel.test(description)) continue;
+      if (/^(?:FERIE|PERMESSI|R\.?O\.?L\.?|EX\s*FEST)\s*\(?(?:ORE|GG|GIORNI)?\)?$/i.test(description) && values.length >= 4) continue;
       const amount = values[values.length - 1].value;
       if (Math.abs(amount) > 1000000) continue;
       const voice = { codice: '', descrizione: description, base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null };
       if (values.length >= 3) {
-        voice.base = values[0].value;
-        voice.rifQta = values[1].value;
+        const inputs = values.slice(0, -1).map(item => item.value);
+        const percent = inputs.find(value => value > 0 && value <= 100);
+        const monetaryBase = inputs.find(value => Math.abs(value) > 100);
+        if (deduction.test(description) && percent != null && monetaryBase != null && percent !== monetaryBase) {
+          voice.base = monetaryBase; voice.rifQta = percent; voice.rifUnita = '%';
+        } else {
+          voice.base = values[0].value;
+          voice.rifQta = values[1].value;
+        }
       } else if (values.length === 2 && Math.abs(values[0].value) < 400) {
         voice.rifQta = values[0].value;
       }
       if (deduction.test(description)) voice.trattenuta = Math.abs(amount);
       else voice.competenza = amount;
-      voice.meta = { source: 'riga-etichettata', confidence: values.length >= 2 ? 0.7 : 0.62 };
+      voice.meta = { source: 'riga-etichettata', confidence: values.length >= 2 ? 0.7 : 0.62, visual: visualEvidence(line) };
       addSyntheticVoice(rec, voice);
     }
   }
@@ -724,6 +769,7 @@ function extractTotals(rec, allLines) {
             source: rec.meta.fonte,
             method: 'etichetta-coordinate',
             label: normalizzaTesto(cell.str), page,
+            bbox: lineBBox(lines[i]), snippet: normalizzaTesto(lines[i].text).slice(0, 180),
           });
         }
         if (def.re.test(normalizzaTesto(lines[i].text))) {
@@ -733,6 +779,7 @@ function extractTotals(rec, allLines) {
             source: rec.meta.fonte,
             method: 'ultimo-numero-riga',
             label: normalizzaTesto(lines[i].text).slice(0, 100), page,
+            bbox: lineBBox(lines[i]), snippet: normalizzaTesto(lines[i].text).slice(0, 180),
           });
         }
       }
@@ -750,21 +797,58 @@ function resolveTotalCandidates(rec) {
   const trat = lists.trattenute || [{ value: null, confidence: 0 }];
   const nett = lists.netto || [{ value: null, confidence: 0 }];
   const arro = lists.arrotondamento || [{ value: 0, confidence: 0.25, source: 'default', method: 'default' }];
-  let best = null;
+  const voiceCompetences = (rec.voci || []).filter(voice => voice.competenza != null);
+  const voiceDeductions = (rec.voci || []).filter(voice => voice.trattenuta != null);
+  const sumCompetences = voiceCompetences.reduce((sum, voice) => sum + Number(voice.competenza || 0), 0);
+  const sumDeductions = voiceDeductions.reduce((sum, voice) => sum + Number(voice.trattenuta || 0), 0);
+  const ranked = [];
   for (const c of comp) for (const t of trat) for (const n of nett) for (const a of arro) {
     let score = c.confidence + t.confidence + n.confidence + a.confidence * 0.25;
+    const reasons = [];
     if (c.value != null && t.value != null && n.value != null) {
       const delta = Math.min(Math.abs(c.value - t.value - n.value), Math.abs(c.value - t.value + (a.value || 0) - n.value));
-      score += delta <= 0.05 ? 2.4 : delta <= 0.55 ? 1.7 : Math.max(-2.5, 0.5 - Math.log10(delta + 0.01));
+      if (delta <= 0.05) { score += 2.4; reasons.push('quadratura esatta del netto'); }
+      else if (delta <= 0.55) { score += 1.7; reasons.push('quadratura compatibile con arrotondamento'); }
+      else score += Math.max(-2.5, 0.5 - Math.log10(delta + 0.01));
     }
-    if (!best || score > best.score) best = { score, c, t, n, a };
+    if (c.value != null && voiceCompetences.length >= 2 && sumCompetences > 0) {
+      const delta = Math.abs(c.value - sumCompetences);
+      const ratio = delta / Math.max(1, Math.abs(c.value));
+      if (ratio <= .002) { score += 1.15; reasons.push('somma delle competenze'); }
+      else if (ratio <= .03) score += .35;
+      else if (ratio > .45) score -= .45;
+    }
+    if (t.value != null && voiceDeductions.length >= 2 && sumDeductions > 0) {
+      const delta = Math.abs(t.value - sumDeductions);
+      const ratio = delta / Math.max(1, Math.abs(t.value));
+      if (ratio <= .002) { score += 1.15; reasons.push('somma delle trattenute'); }
+      else if (ratio <= .03) score += .35;
+      else if (ratio > .45) score -= .45;
+    }
+    if (c.value != null && n.value != null && (c.value < n.value || c.value < 0 || n.value < 0)) score -= 1.2;
+    if (t.value != null && (t.value < 0 || (c.value != null && t.value > c.value * 1.15))) score -= 1.2;
+    ranked.push({ score, c, t, n, a, reasons });
   }
+  ranked.sort((left, right) => right.score - left.score);
+  const best = ranked[0];
   if (!best) return;
   for (const [key, candidate] of [['competenze', best.c], ['trattenute', best.t], ['netto', best.n], ['arrotondamento', best.a]]) {
     if (candidate.value == null || (key === 'arrotondamento' && candidate.source === 'default')) continue;
     rec.totali[key] = candidate.value;
     markField(rec, 'totali.' + key, candidate);
   }
+  const seen = new Set();
+  rec.meta.reconciliation = rec.meta.reconciliation || {};
+  rec.meta.reconciliation.voiceSums = { competenze: Number(sumCompetences.toFixed(2)), trattenute: Number(sumDeductions.toFixed(2)) };
+  rec.meta.reconciliation.alternatives = ranked.filter(item => {
+    const key = [item.c.value, item.t.value, item.a.value, item.n.value].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  }).slice(0, 3).map((item, index) => ({
+    rank: index + 1, score: Number(item.score.toFixed(3)),
+    competenze: item.c.value, trattenute: item.t.value, arrotondamento: item.a.value, netto: item.n.value,
+    reasons: item.reasons,
+  }));
 }
 
 function assignLabelGroups(lines, lineIndex, definitions, output) {
@@ -904,6 +988,57 @@ function extractHours(rec, allLines, fullText) {
   if (nextStep) rec.orario.prossimoScatto = nextStep[1];
 }
 
+const VISUAL_FIELD_LABELS = [
+  { paths: ['periodo.mese', 'periodo.anno'], re: /PERIODO|MESE\s+DI\s+RETRIBUZIONE|RATA\s+DI\s+RIFERIMENTO/i },
+  { paths: ['dipendente.nome'], re: /COGNOME.*NOME|NOME.*COGNOME|LAVORAT(?:ORE|RICE)/i },
+  { paths: ['dipendente.cf'], re: /CODICE\s+FISCALE|COD\.?(?:ICE)?\s*FISC/i },
+  { paths: ['dipendente.livello'], re: /\bLIVELLO\b|INQUADRAMENTO/i },
+  { paths: ['dipendente.qualifica'], re: /QUALIFICA|MANSIONE/i },
+  { paths: ['dipendente.dataAssunzione'], re: /DATA\s+ASSUNZIONE|ASSUNZIONE/i },
+  { paths: ['azienda.nome'], re: /RAGIONE\s+SOCIALE|DATORE\s+DI\s+LAVORO|AZIENDA/i },
+  { paths: ['ccnl.cnel', 'ccnl.descrizione'], re: /CODICE\s+CNEL|\bCNEL\b|CONTRATTO\s+APPLICATO|\bCCNL\b/i },
+  { paths: ['elementi.pagaBase'], re: /PAGA\s+BASE|STIPENDIO\s+TABELLARE|MINIMO\s+CONTRATTUALE/i },
+  { paths: ['elementi.contingenza'], re: /CONTINGENZA/i },
+  { paths: ['elementi.superminimo'], re: /SUPERMINIMO|SUP\.?\s*ASS/i },
+  { paths: ['elementi.scatti'], re: /SCATTI?\s+(?:DI\s+)?ANZIANIT/i },
+  { paths: ['elementi.totale'], re: /TOTALE\s+ELEMENTI|RETRIBUZIONE\s+MENSILE/i },
+  { paths: ['orario.oreOrdinarie'], re: /ORE\s+(?:ORDINARIE\s+)?LAVORATE/i },
+  { paths: ['orario.giorniLavorati'], re: /GIORNI?\s+LAVORATI|GG\.?\s+LAVORATI/i },
+  { paths: ['orario.pagaOraria'], re: /RETRIBUZIONE\s+ORARIA|PAGA\s+ORARIA|TARIFFA\s+ORARIA/i },
+  { paths: ['orario.pagaGiornaliera'], re: /RETRIBUZIONE\s+GIORNALIERA|PAGA\s+GIORNALIERA/i },
+  { paths: ['totali.competenze'], re: /TOTALE\s+(?:COMPETENZE|SPETTANZE|LORDO)/i },
+  { paths: ['totali.trattenute'], re: /TOTALE\s+(?:TRATTENUTE|RITENUTE|DEDUZIONI)/i },
+  { paths: ['totali.arrotondamento'], re: /ARROTONDAMENTO/i },
+  { paths: ['totali.netto'], re: /NETTO(?:\s+DEL\s+MESE|\s+IN\s+BUSTA|\s+A\s+PAGARE)?|RETRIBUZIONE\s+NETTA|IMPORTO\s+NETTO/i },
+  { paths: ['tfr.retribUtile'], re: /RETRIBUZIONE\s+UTILE\s+T\.?\s*F\.?\s*R/i },
+  { paths: ['tfr.quotaMese'], re: /TFR\s+DEL\s+MESE|QUOTA\s+T\.?\s*F\.?\s*R/i },
+  { paths: ['tfr.fondo3112'], re: /TFR\s+AL\s+31[\/-]12|FONDO\s+(?:AL\s+)?31[\/-]12|OGGI\s+IN\s+AZIENDA\s+HAI/i },
+  { paths: ['progressivi.impInps'], re: /IMPONIBILE\s+INPS\s+PROGR|PROGRESSIVI.*IMP\.?\s*INPS/i },
+  { paths: ['progressivi.impIrpef'], re: /IMPONIBILE\s+(?:IRPEF|FISCALE)\s+PROGR|PROGRESSIVI.*IMP\.?\s*IRPEF/i },
+];
+
+function attachVisualEvidence(rec, allLines) {
+  for (const definition of VISUAL_FIELD_LABELS) {
+    const missing = definition.paths.filter(path => getPathValue(rec, path) != null && !(rec.meta.fields[path] && rec.meta.fields[path].bbox));
+    if (!missing.length) continue;
+    let found = null;
+    for (const lines of allLines) {
+      found = lines.find(line => { definition.re.lastIndex = 0; return definition.re.test(normalizzaTesto(line.text)); });
+      if (found) break;
+    }
+    if (!found) continue;
+    const evidence = visualEvidence(found);
+    for (const path of missing) {
+      const current = rec.meta.fields[path];
+      markField(rec, path, Object.assign({
+        confidence: current ? current.confidence : (rec.meta.fonte === 'ocr' ? .56 : .8),
+        source: current ? current.source : rec.meta.fonte,
+        method: current ? current.method : 'etichetta-visiva',
+      }, evidence));
+    }
+  }
+}
+
 function inferMissingTotal(rec, warnings) {
   const t = rec.totali;
   const rounding = t.arrotondamento || 0;
@@ -946,11 +1081,23 @@ function valutaCoerenza(rec) {
   const checks = [];
   const quadratura = quadraturaTotali(rec.totali);
   if (quadratura.completa) checks.push({ id: 'totali', ok: quadratura.ok, delta: quadratura.scarto, weight: 4 });
+  const sumCompetences = (rec.voci || []).reduce((sum, voice) => sum + Number(voice.competenza || 0), 0);
+  const sumDeductions = (rec.voci || []).reduce((sum, voice) => sum + Number(voice.trattenuta || 0), 0);
+  const competenceRows = (rec.voci || []).filter(voice => voice.competenza != null).length;
+  const deductionRows = (rec.voci || []).filter(voice => voice.trattenuta != null).length;
+  if (rec.totali.competenze != null && competenceRows >= 2 && sumCompetences > 0) {
+    const delta = Math.abs(rec.totali.competenze - sumCompetences);
+    checks.push({ id: 'somma-competenze', ok: delta <= Math.max(.08, rec.totali.competenze * .015), delta, weight: 2 });
+  }
+  if (rec.totali.trattenute != null && deductionRows >= 2 && sumDeductions > 0) {
+    const delta = Math.abs(rec.totali.trattenute - sumDeductions);
+    checks.push({ id: 'somma-trattenute', ok: delta <= Math.max(.08, rec.totali.trattenute * .015), delta, weight: 2 });
+  }
   for (let i = 0; i < (rec.voci || []).length; i++) {
     const voice = rec.voci[i];
     const amount = voice.competenza ?? voice.trattenuta;
     if (voice.base == null || voice.rifQta == null || amount == null) continue;
-    const expected = Math.abs(voice.base * voice.rifQta);
+    const expected = Math.abs(voice.base * voice.rifQta * (/^%$/.test(voice.rifUnita || '') ? .01 : 1));
     const delta = Math.abs(expected - Math.abs(amount));
     const tolerance = Math.max(0.08, Math.abs(amount) * 0.02);
     checks.push({ id: 'voce.' + i, ok: delta <= tolerance, delta, weight: 1 });
@@ -970,14 +1117,30 @@ function valutaCoerenza(rec) {
     const plausible = divisore >= 120 && divisore <= 230;
     checks.push({ id: 'paga-oraria', ok: plausible, delta: plausible ? 0 : Math.min(Math.abs(divisore - 168), Math.abs(divisore - 173)), weight: 1 });
   }
+  const derived = derivaIndice(rec);
+  if (derived.imponibileIrpef != null && rec.totali.competenze != null) {
+    const plausible = derived.imponibileIrpef >= 0 && derived.imponibileIrpef <= rec.totali.competenze * 1.35;
+    checks.push({ id: 'imponibile-irpef', ok: plausible, delta: plausible ? 0 : Math.abs(derived.imponibileIrpef - rec.totali.competenze), weight: 1 });
+  }
+  if (rec.tfr && rec.tfr.retribUtile > 0 && rec.tfr.quotaMese > 0) {
+    const expected = rec.tfr.retribUtile / 13.5;
+    const delta = Math.abs(rec.tfr.quotaMese - expected);
+    checks.push({ id: 'quota-tfr', ok: delta <= Math.max(3, expected * .08), delta, weight: 1 });
+  }
   const weight = checks.reduce((sum, check) => sum + check.weight, 0);
   const passed = checks.filter(check => check.ok).reduce((sum, check) => sum + check.weight, 0);
-  return {
+  const result = {
     score: weight ? Math.round(passed / weight * 100) : null,
     checks,
     total: checks.length,
     passed: checks.filter(check => check.ok).length,
   };
+  if (rec.meta) {
+    rec.meta.reconciliation = rec.meta.reconciliation || {};
+    rec.meta.reconciliation.checks = checks;
+    rec.meta.reconciliation.score = result.score;
+  }
+  return result;
 }
 
 function annotateFields(rec) {
@@ -1057,9 +1220,13 @@ function ripulisciVoci(rec) {
 
 function ripulisciRecord(rec) {
   if (!rec || typeof rec !== 'object') return rec;
+  rec.documento = rec.documento || { tipo: 'ordinario' };
   rec.meta = rec.meta || { fonte: 'sconosciuta', software: 'layout non identificato', inferiti: [] };
+  rec.meta.settore = rec.meta.settore || 'privato-lul';
   rec.meta.fields = rec.meta.fields || {};
   rec.meta.candidates = rec.meta.candidates || {};
+  rec.meta.reconciliation = rec.meta.reconciliation || {};
+  rec.meta.pageSizes = rec.meta.pageSizes || [];
   ripulisciVoci(rec);
   annotateFields(rec);
   rec.meta.consistency = valutaCoerenza(rec);
@@ -1086,9 +1253,13 @@ function finalizzaRecord(rec, warnings) {
 function parsePdfPages(pages, options = {}) {
   const warnings = [];
   const allLines = (pages || []).map(items => buildLines(items));
+  allLines.forEach((lines, page) => lines.forEach(line => { line.page = page; }));
   const fullText = allLines.map(lines => lines.map(line => line.text).join('\n')).join('\n');
   const source = options.source === 'ocr' ? 'ocr' : 'pdf';
   const rec = recordVuoto(source, rilevaSoftware(fullText));
+  rec.documento.tipo = rilevaTipoCedolino(fullText);
+  rec.meta.settore = typeof parserSectorForText === 'function' ? parserSectorForText(fullText).id : 'privato-lul';
+  rec.meta.pageSizes = Array.isArray(options.pageSizes) ? options.pageSizes : [];
   rec.periodo = parsePeriodo(fullText);
 
   extractIdentity(rec, allLines, fullText);
@@ -1101,6 +1272,7 @@ function parsePdfPages(pages, options = {}) {
   extractProgressivesAndTfr(rec, allLines);
   extractAccruals(rec, allLines);
   extractHours(rec, allLines, fullText);
+  attachVisualEvidence(rec, allLines);
 
   return finalizzaRecord(rec, warnings);
 }
@@ -1114,6 +1286,8 @@ function parseFreeText(text) {
   const warnings = ['Estrazione da testo/OCR: precisione limitata, controlla tutti i campi.'];
   const normalized = normalizzaTesto(text);
   const rec = recordVuoto('ocr', rilevaSoftware(normalized));
+  rec.documento.tipo = rilevaTipoCedolino(normalized);
+  rec.meta.settore = typeof parserSectorForText === 'function' ? parserSectorForText(normalized).id : 'privato-lul';
   rec.periodo = parsePeriodo(normalized);
 
   const cf = normalized.toUpperCase().match(/\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/);
@@ -1225,15 +1399,65 @@ function trovaCcnl(rec, db, custom = []) {
     const official = cnelContractByCode(cnel);
     if (official) return official;
   }
-  const text = [rec.ccnl && rec.ccnl.descrizione, rec.ccnl && rec.ccnl.nomeManuale].filter(Boolean).join(' ');
-  if (text) {
-    for (const contract of all) {
-      if ((contract.match || []).some(re => re.test(text))) return contract;
-    }
-    const official = findOfficialCcnlByText(text);
-    if (official) return official;
+  const suggestions = suggerisciCcnl(rec, db, custom, 3);
+  if (suggestions.length) {
+    const first = suggestions[0], second = suggestions[1];
+    if (first.score >= .82 && (!second || first.score - second.score >= .14)) return first.contract;
   }
   return null;
+}
+
+const CCNL_STOPWORDS = new Set(['CCNL', 'CONTRATTO', 'COLLETTIVO', 'NAZIONALE', 'LAVORO', 'DIPENDENTI', 'AZIENDE', 'AZIENDA', 'SETTORE', 'DELLA', 'DELLE', 'DEGLI', 'PER', 'CON', 'NEL', 'DAL']);
+function ccnlTokens(value) {
+  return plain(value).split(/[^A-Z0-9]+/).filter(token => token.length >= 4 && !CCNL_STOPWORDS.has(token));
+}
+
+function suggerisciCcnl(rec, db, custom = [], limit = 3) {
+  const all = [...custom, ...db];
+  const code = String(rec.ccnl && rec.ccnl.cnel || '').trim().toUpperCase();
+  const text = [rec.ccnl && rec.ccnl.descrizione, rec.ccnl && rec.ccnl.nomeManuale, rec.meta && rec.meta.settore].filter(Boolean).join(' ');
+  const tokens = ccnlTokens(text);
+  const suggestions = [];
+  for (const contract of all) {
+    let score = 0;
+    const reasons = [];
+    if (code && (contract.cnel || []).map(String).map(item => item.toUpperCase()).includes(code)) {
+      score = 1; reasons.push(`codice CNEL ${code} esatto`);
+    }
+    let regexHits = 0;
+    for (const re of contract.match || []) {
+      re.lastIndex = 0;
+      if (text && re.test(text)) regexHits++;
+    }
+    if (regexHits) {
+      score = Math.max(score, Math.min(.9, .62 + regexHits * .09));
+      reasons.push(regexHits === 1 ? 'denominazione compatibile' : `${regexHits} segnali nella denominazione`);
+    }
+    const haystack = plain([contract.nome, contract.firmatari, ...(contract.cnel || [])].join(' '));
+    const tokenHits = tokens.filter(token => haystack.includes(token));
+    if (tokenHits.length) {
+      score = Math.max(score, .42 + .45 * tokenHits.length / Math.max(2, tokens.length));
+      reasons.push(`parole: ${tokenHits.slice(0, 3).join(', ').toLowerCase()}`);
+    }
+    if (score >= .42) suggestions.push({ contract, score: Math.min(1, score), reasons });
+  }
+  if (typeof CNEL_INDEX !== 'undefined' && tokens.length >= 2) {
+    for (const [officialCode, entry] of Object.entries(CNEL_INDEX)) {
+      if (all.some(contract => (contract.cnel || []).map(String).map(item => item.toUpperCase()).includes(officialCode))) continue;
+      const haystack = plain([entry.n, ...(entry.a || []), ...(entry.s || [])].join(' '));
+      const hits = tokens.filter(token => haystack.includes(token));
+      if (hits.length < 2) continue;
+      const score = Math.min(.86, .38 + .5 * hits.length / tokens.length);
+      if (score < .55) continue;
+      suggestions.push({ contract: cnelContractByCode(officialCode), score, reasons: [`parole ufficiali CNEL: ${hits.slice(0, 3).join(', ').toLowerCase()}`] });
+    }
+  }
+  const unique = new Map();
+  for (const suggestion of suggestions.sort((a, b) => b.score - a.score)) {
+    if (!suggestion.contract || unique.has(suggestion.contract.id)) continue;
+    unique.set(suggestion.contract.id, suggestion);
+  }
+  return [...unique.values()].slice(0, Math.max(1, limit)).map(item => Object.assign(item, { score: Number(item.score.toFixed(2)) }));
 }
 
 function cnelContractByCode(code) {
@@ -1272,4 +1496,4 @@ function findOfficialCcnlByText(value) {
 }
 
 // eslint-disable-next-line no-unused-vars
-const Parser = { parsePdfPages, parseFreeText, trovaCcnl, cnelContractByCode, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, valutaCoerenza, fieldConfidence, normalizzaTesto, ripulisciRecord, quadraturaTotali };
+const Parser = { parsePdfPages, parseFreeText, trovaCcnl, suggerisciCcnl, cnelContractByCode, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, valutaCoerenza, fieldConfidence, normalizzaTesto, ripulisciRecord, quadraturaTotali, rilevaTipoCedolino };

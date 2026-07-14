@@ -503,6 +503,98 @@ function espandiAbbreviazioniVoce(value) {
     .replace(/\brimb\.(?=\s|$)/gi, 'rimborso');
 }
 
+/* Somiglianza locale per abbreviazioni ed errori OCR. Si usa solo oltre una
+   soglia prudente; il lato contabile della riga resta sempre prioritario. */
+const VOCI_SEMANTICHE = [
+  ['Retribuzione ordinaria', 'retribuzione ordinaria', 'paga ordinaria', 'ore ordinarie', 'giornate ordinarie', 'stipendio ordinario'],
+  ['Straordinario', 'lavoro straordinario', 'ore extra', 'straordinario feriale'],
+  ['Maggiorazione per lavoro festivo', 'maggiorazione festiva', 'lavoro festivo maggiorato', 'magg festivita'],
+  ['Lavoro notturno', 'maggiorazione notturna', 'ore notturne', 'lavoro notte'],
+  ['Ferie', 'ferie godute', 'ferie retribuite', 'liquidazione ferie'],
+  ['Permessi retribuiti / banca ore', 'permessi retribuiti', 'permessi goduti', 'banca ore'],
+  ['Tredicesima', 'tredicesima mensilita', 'gratifica natalizia', '13 mensilita'],
+  ['Quattordicesima', 'quattordicesima mensilita', '14 mensilita'],
+  ['Superminimo', 'superminimo assorbibile', 'superminimo non assorbibile', 'sup ass'],
+  ['Scatti di anzianità', 'scatti anzianita', 'aumenti periodici anzianita'],
+  ['Contributi INPS (IVS)', 'contributo inps', 'ritenuta ivs', 'previdenza inps'],
+  ['Contributo FIS', 'fondo integrazione salariale', 'contributo fis'],
+  ['IRPEF', 'ritenuta irpef', 'imposta reddito persone fisiche'],
+  ['Addizionale regionale', 'addizionale regione', 'ritenuta regionale'],
+  ['Addizionale comunale', 'addizionale comune', 'ritenuta comunale'],
+  ['Indennità di turno', 'indennita turno', 'compenso turni', 'turnistica'],
+  ['Premio di risultato', 'premio produzione', 'premio risultato', 'bonus produttivita'],
+  ['Rimborso spese', 'rimborso chilometrico', 'rimborso trasferta', 'rimborso nota spese'],
+  ['TFR', 'trattamento fine rapporto', 'quota tfr', 'accantonamento tfr'],
+];
+
+const SEMANTIC_STOP = new Set(['DEL', 'DELLA', 'DELLE', 'PER', 'CON', 'ALLA', 'DAL', 'NEL', 'VOCE', 'IMPORTO', 'MESE']);
+function semanticText(value) {
+  return espandiAbbreviazioniVoce(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function semanticTokens(value) {
+  return semanticText(value).split(' ').filter(token => token.length >= 3 && !SEMANTIC_STOP.has(token));
+}
+function trigramSet(value) {
+  const text = '  ' + semanticText(value).replace(/\s+/g, ' ') + '  ';
+  const result = new Set();
+  for (let i = 0; i < text.length - 2; i++) result.add(text.slice(i, i + 3));
+  return result;
+}
+function semanticEditDistance(left, right) {
+  const a = String(left), b = String(right), row = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    let previous = row[0]; row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const saved = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+      previous = saved;
+    }
+  }
+  return row[b.length];
+}
+function semanticSimilarity(left, right) {
+  const aTokens = semanticTokens(left), bTokens = semanticTokens(right);
+  if (!aTokens.length || !bTokens.length) return 0;
+  let tokenScore = 0;
+  for (const a of aTokens) {
+    if (bTokens.some(b => a === b)) tokenScore += 1;
+    else if (bTokens.some(b => a.length >= 5 && b.length >= 5 && (a.startsWith(b.slice(0, 5)) || b.startsWith(a.slice(0, 5))))) tokenScore += .72;
+    else {
+      const closest = Math.min(...bTokens.map(b => semanticEditDistance(a, b) / Math.max(a.length, b.length)));
+      if (closest <= .22) tokenScore += .78;
+      else if (closest <= .34) tokenScore += .52;
+    }
+  }
+  tokenScore /= Math.max(aTokens.length, bTokens.length);
+  const aTri = trigramSet(left), bTri = trigramSet(right);
+  let intersection = 0;
+  for (const tri of aTri) if (bTri.has(tri)) intersection++;
+  const dice = 2 * intersection / Math.max(1, aTri.size + bTri.size);
+  return tokenScore * .58 + dice * .42;
+}
+function semanticVoiceMatch(description) {
+  if (semanticText(description).length < 6) return null;
+  const sectorHints = typeof parserSectorVoiceHints === 'function'
+    ? parserSectorVoiceHints().map(hint => [hint.name, ...hint.aliases]) : [];
+  let best = null;
+  for (const concept of [...VOCI_SEMANTICHE, ...sectorHints]) {
+    const [name, ...aliases] = concept;
+    const score = Math.max(...aliases.map(alias => semanticSimilarity(description, alias)));
+    if (!best || score > best.score) best = { name, score };
+  }
+  const threshold = semanticTokens(description).length >= 2 ? .46 : .68;
+  if (!best || best.score < threshold) return null;
+  const known = VOCI_PATTERN.find(pattern => semanticText(pattern.nome) === semanticText(best.name));
+  if (known) return Object.assign({}, known, { semanticScore: best.score });
+  return {
+    nome: best.name.replace(/\b\w/g, char => char.toUpperCase()),
+    cat: 'dato', semanticScore: best.score,
+    cosa: 'Causale riconosciuta per somiglianza terminologica con una famiglia di voci del settore.',
+    controlla: 'La descrizione contiene abbreviazioni o possibili errori OCR: conferma il tipo nella schermata di verifica.',
+  };
+}
+
 function classificaVoce(voce) {
   const v = voce || {};
   if (v.categoriaManuale || v.nomeManuale) {
@@ -521,6 +613,14 @@ function classificaVoce(voce) {
   for (const pattern of VOCI_PATTERN) {
     pattern.re.lastIndex = 0;
     if (pattern.re.test(description) || (expandedDescription !== description && pattern.re.test(expandedDescription))) return pattern;
+  }
+  const semantic = semanticVoiceMatch(description);
+  if (semantic) {
+    const side = v.trattenuta != null ? 'trattenuta' : (v.competenza != null ? 'competenza' : semantic.cat);
+    return Object.assign({}, semantic, {
+      cat: semantic.cat === 'dato' ? side : semantic.cat,
+      cosa: `${semantic.cosa} Riconoscimento offline per somiglianza ${Math.round(semantic.semanticScore * 100)}%; la causale originale resta “${description}”.`,
+    });
   }
   if (v.costoAzienda != null || v.cDitta) {
     return {
