@@ -373,7 +373,7 @@ function ocrToItems(data, canvas) {
     r.ws.push(w);
   }
   const items = [];
-  const isCodice = s => /^[A-Z0-9]{5,6}$/.test(s) && /\d/.test(s);
+  const isCodice = s => /^(?=.{1,12}$)(?=.*\d)[A-Z0-9][A-Z0-9./_-]*$/i.test(s);
   for (const r of righe) {
     r.ws.sort((a, b) => a.x0 - b.x0);
     const y = (canvasH - r.yc) * K;   // stessa y per tutte le celle della riga
@@ -421,6 +421,7 @@ function unisciEstrazioni(a, b) {
   if (!base.record.voci.length && altro.record.voci.length) base.record.voci = altro.record.voci;
   base.record.derivati = Parser.derivaIndice(base.record);
   base.record.meta.fonte = 'ocr';
+  base.record.meta.qualita = Parser.valutaQualita(base.record);
   base.warnings = [...new Set([...(base.warnings || []), ...(altro.warnings || [])])];
   return base;
 }
@@ -460,6 +461,8 @@ function emptyRecord() {
 }
 function startVerifica(record, warnings) {
   if (!record.id) record.id = uid();
+  record.meta = record.meta || { fonte: 'manuale' };
+  record.meta.qualita = Parser.valutaQualita(record);
   const hit = Parser.trovaCcnl(record, CCNL_DB, Store.data.customCcnl.map(reviveCustom));
   if (hit && !record.ccnlId) record.ccnlId = hit.id;
   draft = { record, warnings: warnings || [] };
@@ -483,8 +486,8 @@ const FIELD_GROUPS = [
     ['tfr.rivalutazione', 'Rivalutazione €'], ['tfr.quotaAnno', 'Quota anno €'], ['tfr.aFondi', 'TFR a fondi €'],
   ]},
   { titolo: 'Ferie e permessi (ratei)', info: 'saldo', fields: [
-    ['ratei.ferie.residuoAp', 'Ferie: residuo AP'], ['ratei.ferie.maturato', 'Ferie: maturate'], ['ratei.ferie.goduto', 'Ferie: godute'], ['ratei.ferie.saldo', 'Ferie: saldo'],
-    ['ratei.permessi.residuoAp', 'Permessi: residuo AP'], ['ratei.permessi.maturato', 'Permessi: maturati'], ['ratei.permessi.goduto', 'Permessi: goduti'], ['ratei.permessi.saldo', 'Permessi: saldo'],
+    ['ratei.ferie.residuoAp', 'Ferie: residuo AP'], ['ratei.ferie.maturato', 'Ferie: maturate'], ['ratei.ferie.goduto', 'Ferie: godute anno corrente'], ['ratei.ferie.godutoAp', 'Ferie: godute anni precedenti'], ['ratei.ferie.saldo', 'Ferie: saldo'],
+    ['ratei.permessi.residuoAp', 'Permessi: residuo AP'], ['ratei.permessi.maturato', 'Permessi: maturati'], ['ratei.permessi.goduto', 'Permessi: goduti anno corrente'], ['ratei.permessi.godutoAp', 'Permessi: goduti anni precedenti'], ['ratei.permessi.saldo', 'Permessi: saldo'],
   ]},
   { titolo: 'Progressivi annui', info: 'progressivi', fields: [
     ['progressivi.impInps', 'Imponibile INPS progressivo €'], ['progressivi.impIrpef', 'Imponibile IRPEF progressivo €'], ['progressivi.irpefPagata', 'IRPEF pagata €'],
@@ -494,10 +497,18 @@ const NUM_FIELDS = new Set(FIELD_GROUPS.flatMap(g => g.fields.map(f => f[0])).fi
 
 function renderVerifica() {
   const r = draft.record;
+  const quality = r.meta && r.meta.qualita ? r.meta.qualita : Parser.valutaQualita(r);
+  const qualityClass = quality.livello === 'alta' ? 'ok' : (quality.livello === 'media' ? 'warn' : 'alert');
+  const qualityLabel = quality.livello === 'alta' ? 'Buona' : (quality.livello === 'media' ? 'Parziale' : 'Bassa');
+  const software = r.meta && r.meta.software && !/non identificato|sconosciuto/i.test(r.meta.software) ? ` · formato ${esc(r.meta.software)}` : '';
   const ccnlOpts = allCcnl().map(c => `<option value="${esc(c.id)}" ${r.ccnlId === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('');
   $('#view-verifica').innerHTML = `
   <div class="card">
     <h2>Verifica i dati estratti</h2>
+    <div class="finding ${qualityClass}"><span class="lvchip ${qualityClass}">${qualityLabel}</span><div>
+      <p><b>Affidabilità stimata ${quality.score}/100</b>${software} · ${r.voci.length} voci riconosciute.</p>
+      <p class="muted small">È una stima tecnica, non una garanzia: conferma soprattutto netto, trattenute, ore e CCNL.</p>
+    </div></div>
     ${draft.warnings.map(w => `<div class="finding warn"><span class="lvchip warn">Nota</span><div><p>${esc(w)}</p></div></div>`).join('')}
     <p class="muted">Correggi quello che non torna: i controlli valgono quanto i dati che confermi. I numeri accettano sia 1.234,56 che 1234.56.</p>
     <h3>Contratto (CCNL) ${iBtn('ccnl')}</h3>

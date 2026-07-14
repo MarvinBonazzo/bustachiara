@@ -32,6 +32,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Test payroll parser
+        run: node tests/parser.test.mjs
+
       - name: Build PWA
         run: node build.mjs
 

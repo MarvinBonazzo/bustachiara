@@ -1,0 +1,151 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+
+const context = { console };
+vm.createContext(context);
+vm.runInContext(readFileSync(new URL('../src/parser.js', import.meta.url), 'utf8') + '\nthis.ParserUnderTest = Parser;', context);
+const Parser = context.ParserUnderTest;
+
+function page(rows) {
+  return rows.flatMap(([y, cells]) => cells.map(([x, str, width]) => ({
+    str,
+    x,
+    y,
+    w: width ?? Math.max(8, String(str).length * 4.5),
+  })));
+}
+
+function approx(actual, expected, epsilon = 0.01) {
+  assert.ok(actual != null && Math.abs(actual - expected) <= epsilon, `atteso ${expected}, ricevuto ${actual}`);
+}
+
+assert.equal(Parser.itNum('1.234,56'), 1234.56);
+assert.equal(Parser.itNum('1234.56'), 1234.56);
+assert.equal(Parser.itNum('(45,20)'), -45.2);
+assert.equal(Parser.itNum('9.84122'), 9.84122);
+assert.equal(Parser.itNum('1.234'), 1234);
+
+const jet = Parser.parsePdfPages([page([
+  [800, [[25, 'AZIENDA DIMOSTRATIVA S.R.L.'], [260, 'MESE DI RETRIBUZIONE']]],
+  [786, [[260, 'GIUGNO 2026']]],
+  [740, [[30, 'MARIO ESEMPIO']]],
+  [728, [[30, 'COD.DIP.'], [72, 'LIVELLO'], [120, 'DESCRIZIONE QUALIFICA'], [370, 'Codice CNEL']]],
+  [716, [[30, '000123 4'], [120, 'OPERAI'], [370, 'H05Y']]],
+  [700, [[30, 'CODICE FISCALE'], [125, 'ASSUNZIONE']]],
+  [688, [[30, 'RSSMRA80A01H501U'], [125, '01/02/2020']]],
+  [660, [[27, 'Elementi retributivi']]],
+  [648, [[27, 'PAGA BASE CONGLOB.'], [100, 'CONTINGENZA']]],
+  [636, [[27, '1.167,75000'], [100, '524,94000']]],
+  [620, [[27, 'RETRIBUZIONE MENSILE']]],
+  [608, [[27, '1.692,69']]],
+  [590, [[268, 'Ferie e permessi'], [372, 'RESIDUO AP.'], [411, 'MATURATI'], [445, 'GODUTI A.C.'], [480, 'GODUTI A.P.'], [530, 'TI RIMANGONO (SALDO)']]],
+  [578, [[268, 'Ferie'], [346, '(ORE)'], [411, '86,42'], [445, '28,33'], [482, '31,70'], [538, '58,08']]],
+  [566, [[268, 'ROL'], [346, '(ORE)'], [381, '6,66'], [411, '16,00'], [538, '22,66']]],
+  [540, [[30, 'VOCE'], [52, 'DESCRIZIONE'], [265, 'Unità di Misura'], [305, 'Quantità'], [357, 'BASE'], [408, 'TRATTENUTE'], [477, 'COMPETENZE']]],
+  [526, [[30, '0'], [50, 'Retribuzione ordinaria'], [264, 'GIORNI'], [306, '24,000'], [349, '65,10346'], [482, '1.562,48']]],
+  [512, [[30, '22'], [50, 'Maggiorazione turno'], [269, 'ORE'], [306, '13,340'], [352, '0,98412'], [488, '13,13']]],
+  [498, [[30, '819'], [50, 'Rata addizionale comunale'], [237, '2026'], [419, '2,14']]],
+  [470, [[30, 'Causale presenze/assenze']]],
+  [450, [[39, 'Ore lavorate ordinarie'], [549, '153,41']]],
+  [420, [[28, 'Contributi'], [206, 'DESCRIZIONE CONTRIBUTO'], [294, 'ALIQ.'], [320, 'IMPONIBILE'], [351, 'IMPORTO']]],
+  [408, [[206, 'INPS'], [294, '9,190'], [320, '2.145,00'], [351, '197,13']]],
+  [396, [[206, 'FONDO INTEGR. SALARIALE - FIS', 76], [294, '0,267'], [320, '2.145,00'], [351, '5,73']]],
+  [370, [[28, 'IRPEF'], [86, 'IMPONIBILE FISCALE'], [148, 'IRPEF LORDA']]],
+  [358, [[86, '1.791,43'], [148, '412,03']]],
+  [320, [[468, 'TOTALE COMPETENZE']]],
+  [308, [[85, 'IMPONIBILE FISCALE'], [149, 'IMPONIBILE INPS PROGR.'], [468, '2.145,48']]],
+  [296, [[85, '10.559,55'], [149, '12.107,00']]],
+  [284, [[468, 'TOTALE TRATTENUTE']]],
+  [272, [[468, '376,45']]],
+  [260, [[85, 'TFR DEL MESE'], [140, 'RETRIBUZIONE UTILE TFR'], [468, 'ARROTONDAMENTO']]],
+  [248, [[85, '135,55'], [140, '1.974,81'], [468, '0,36']]],
+  [236, [[85, 'OGGI IN AZIENDA HAI'], [468, 'NETTO IN BUSTA']]],
+  [224, [[85, '1.436,47'], [468, '1.769,00']]],
+])]);
+
+assert.equal(jet.record.meta.software, 'Jet HR');
+assert.equal(jet.record.dipendente.livello, '4');
+assert.equal(jet.record.dipendente.qualifica, 'OPERAI');
+assert.equal(jet.record.ccnl.cnel, 'H05Y');
+assert.equal(jet.record.dipendente.dataAssunzione, '01/02/2020');
+assert.equal(jet.record.voci.some(v => v.codice === '0' && v.descrizione === 'Retribuzione ordinaria'), true);
+assert.equal(jet.record.voci.some(v => /FIS/i.test(v.descrizione) && v.trattenuta === 5.73), true);
+approx(jet.record.elementi.totale, 1692.69);
+approx(jet.record.orario.oreOrdinarie, 153.41);
+approx(jet.record.totali.netto, 1769);
+approx(jet.record.ratei.ferie.godutoAp, 31.7);
+approx(jet.record.tfr.fondo3112, 1436.47);
+assert.equal(jet.record.meta.qualita.livello, 'alta');
+
+const zucchetti = Parser.parsePdfPages([
+  page([
+    [800, [[27, 'CodicesAzienda'], [86, 'RagionesSociale']]],
+    [788, [[25, '000111'], [85, 'AZIENDA ESEMPIO S.R.L.']]],
+    [750, [[433, 'PERIODOsDIsRETRIBUZIONE']]],
+    [738, [[431, 'Giugno 2026']]],
+    [716, [[31, 'Codicesdipendente'], [98, 'COGNOMEsEsNOME'], [448, 'CodicesFiscale']]],
+    [704, [[29, '0000001'], [99, 'PERSONA DI ESEMPIO'], [449, 'RSSMRA80A01H501U']]],
+    [688, [[77, 'DatasAssunzione'], [259, "4' Livello"]]],
+    [676, [[77, '06-01-2025']]],
+    [648, [[294, 'CNEL H052']]],
+    [636, [[294, 'Alberghi Imprese Confcommercio']]],
+    [620, [[75, 'PAGA BASE'], [155, 'SUP.ASS.']]],
+    [608, [[107, '1.688,98000'], [196, '311,02000']]],
+    [590, [[52, 'ELEMENTIsDELLAs RETRIBUZIONE'], [520, 'TOTALE']]],
+    [578, [[525, '2.000,00000']]],
+    [558, [[86, 'VOCIsVARIABILIsDELsMESE'], [251, 'IMPORTOsBASE'], [352, 'RIFERIMENTO'], [448, 'TRATTENUTE'], [518, 'COMPETENZE']]],
+    [544, [[25, '* * Z00001 Retribuzione'], [281, '11,62791'], [364, '154,00000'], [404, 'ORE'], [537, '1.790,70']]],
+    [530, [[25, 'F02000 Imponibile fiscale'], [281, '2.310,00']]],
+    [516, [[25, 'F03020 Ritenute IRPEF'], [448, '300,00']]],
+  ]),
+  page([
+    [800, [[27, 'CodicesAzienda'], [86, 'RagionesSociale']]],
+    [788, [[25, '000111'], [85, 'AZIENDA ESEMPIO S.R.L.']]],
+    [558, [[86, 'VOCIsVARIABILIsDELsMESE'], [251, 'IMPORTOsBASE'], [352, 'RIFERIMENTO'], [448, 'TRATTENUTE'], [518, 'COMPETENZE']]],
+    [544, [[25, 'F09150 Rata trattamento integrativo'], [448, '10,68'], [537, '10,69']]],
+    [526, [[69, 'Retribuzione utile T.F.R.'], [283, '2.731,02']]],
+    [514, [[69, 'Quota T.F.R.'], [290, '188,64']]],
+    [240, [[28, 'PROGRESSIVI'], [92, 'Imp. INPS'], [165, 'Imp. INAIL'], [240, 'Imp. IRPEF'], [308, 'IRPEF pagata']]],
+    [226, [[94, '16.230,00'], [169, '16.230,00'], [245, '13.881,42'], [326, '1.618,53']]],
+    [210, [[28, 'T.F.R.'], [67, 'F.do 31/12'], [166, 'Rivalutaz.'], [253, 'Imp.rival.'], [341, 'Quota anno']]],
+    [196, [[74, '1.362,75'], [181, '36,27'], [271, '6,17'], [350, '1.121,03']]],
+    [180, [[28, 'RATEI'], [423, 'TOTALEsCOMPETENZE'], [547, '2.858,03']]],
+    [168, [[122, 'Residuo AP'], [188, 'Maturato'], [252, 'Goduto'], [317, 'Saldo']]],
+    [156, [[30, 'Ferie'], [122, '9,45666'], [188, '13,00000'], [252, '13,20000'], [317, '9,25666'], [374, 'GG.']]],
+    [144, [[30, 'Permessi'], [122, '39,78500'], [188, '52,00000'], [252, '37,00000'], [317, '54,78500'], [374, 'ORE'], [425, 'ARROTONDAMENTO'], [562, '0,63']]],
+    [132, [[424, 'TOTALEsTRATTENUTE'], [553, '582,66']]],
+    [120, [[487, 'NETTOsDELsMESE']]],
+    [108, [[510, '2.276,00']]],
+  ]),
+]);
+
+assert.equal(zucchetti.record.meta.software, 'Zucchetti');
+assert.equal(zucchetti.record.azienda.nome, 'AZIENDA ESEMPIO S.R.L.');
+assert.equal(zucchetti.record.dipendente.livello, '4');
+assert.equal(zucchetti.record.ccnl.cnel, 'H052');
+assert.equal(zucchetti.record.voci.some(v => v.codice === 'Z00001' && v.descrizione === 'Retribuzione'), true);
+assert.equal(zucchetti.record.voci.some(v => v.codice === 'F09150'), true);
+approx(zucchetti.record.tfr.retribUtile, 2731.02);
+approx(zucchetti.record.tfr.quotaMese, 188.64);
+approx(zucchetti.record.tfr.fondo3112, 1362.75);
+approx(zucchetti.record.progressivi.impInps, 16230);
+approx(zucchetti.record.progressivi.impIrpef, 13881.42);
+approx(zucchetti.record.ratei.ferie.saldo, 9.25666);
+approx(zucchetti.record.totali.netto, 2276);
+assert.equal(zucchetti.record.meta.qualita.livello, 'alta');
+
+const genericOcr = Parser.parseFreeText(`
+CEDOLINO PAGA 06/2026
+Codice fiscale RSSMRA80A01H501U
+10 Indennità di turno 100,00
+Contributo INPS 2.000,00 184,00
+Totale competenze 2.100,00
+Totale trattenute 500,00
+Netto a pagare 1.600,00
+`);
+assert.equal(genericOcr.record.periodo.mese, 6);
+assert.equal(genericOcr.record.voci.some(v => /Indennità di turno/i.test(v.descrizione)), true);
+approx(genericOcr.record.totali.netto, 1600);
+
+console.log('OK — parser multi-layout: numeri, Jet HR, Zucchetti e OCR generico');
