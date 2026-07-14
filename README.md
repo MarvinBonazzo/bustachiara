@@ -181,7 +181,7 @@ personali — l'unica "busta" inclusa è l'esempio con dati inventati (Mario Ros
 | Quota TFR | retribuzione utile ÷ 13,5 − 0,50% imponibile INPS | art. 2120 c.c. |
 | Paga oraria | totale elementi ÷ divisore CCNL (168/172/173…) | CCNL |
 | Maggiorazione festiva/domenicale | tariffa voce ÷ tariffa ordinaria | CCNL |
-| Maturazione ferie | maturato ÷ mesi × 12 vs giorni CCNL (min. 4 settimane) | D.lgs. 66/2003 + CCNL |
+| Maturazione ferie | maturato ÷ mesi × 12, rispettando l’unità del cedolino (ore o giorni), vs CCNL | D.lgs. 66/2003 + CCNL |
 | Maturazione ROL/permessi | come sopra vs monte ore CCNL (con scaglioni anzianità) | CCNL |
 | Minimo tabellare | paga base vs riferimento livello (dove disponibile) | CCNL / art. 36 Cost. |
 | Ferie accumulate | saldo > 1,5 annualità → avviso | D.lgs. 66/2003 |
@@ -215,7 +215,8 @@ paternità/congedi (D.lgs. 151/2001) · permessi L. 104/92 · prescrizione credi
 
 ### CCNL in archivio (20)
 Turismo–Alberghi Confcommercio (CNEL H052, **testato sul cedolino reale**) · Pubblici
-Esercizi FIPE · Terziario/Commercio Confcommercio · Metalmeccanici industria e artigiani ·
+Esercizi FIPE (CNEL H05Y, **testato sul cedolino reale Jet HR**) · Terziario/Commercio
+Confcommercio · Metalmeccanici industria e artigiani ·
 Edilizia · Studi professionali · Logistica/Trasporto merci · Chimico-farmaceutico ·
 Alimentare · Tessile-Moda · Gomma-plastica · Legno-arredo · TLC · Multiservizi · Vigilanza ·
 Sanità privata · Lavoro domestico · Somministrazione · Agricoltura operai.
@@ -326,17 +327,25 @@ BustaChiara/
 - **Un solo file**: i worker girano da `blob:` URL e il dizionario OCR viene servito da un
   intercettatore di `fetch` interno al worker → funziona anche da `file://`, senza server.
 - **Parser**: usa le coordinate del testo PDF per ricostruire la tabella voci (colonne
-  IMPORTO BASE / RIFERIMENTO / TRATTENUTE / COMPETENZE), gestisce le stranezze del formato
-  Zucchetti (etichette con separatore "s") e ha un fallback generico per altri software
-  (TeamSystem, Inaz, ADP…) + testo OCR. Qualunque estrazione passa dalla schermata di verifica.
+  IMPORTO BASE / RIFERIMENTO / TRATTENUTE / COMPETENZE), riconosce esplicitamente i layout
+  **Jet HR** e **Zucchetti** (incluse le loro abbreviazioni e particolarità) e ha un fallback
+  generico per altri software (TeamSystem, Inaz, ADP…) + testo OCR. Il filtro strutturale
+  distingue le voci economiche da calendario presenze, legende e righe informative.
+- **Dizionario ibrido**: prima usa i codici paga noti, poi famiglie semantiche e abbreviazioni
+  comuni, infine il lato contabile della riga (competenza, trattenuta o dato). Una causale
+  proprietaria rimane visibile con la sua descrizione originale senza essere chiamata
+  genericamente “voce non in dizionario”.
 - **Ricompilare dopo una modifica**: `node build.mjs` (serve solo Node.js). Su GitHub il
   workflow Pages esegue automaticamente la build prima di ogni pubblicazione.
 
 ### Test eseguiti
-- Parser e controlli verificati su un **cedolino Zucchetti reale** (Turismo 4° livello,
-  giugno 2026): 27/27 voci, totali, TFR, ratei e progressivi estratti correttamente;
+- Parser e controlli verificati su un **cedolino Jet HR reale** (FIPE H05Y, giugno 2026):
+  19/19 voci classificate, calendario presenze escluso, totali, tariffe, TFR, ratei e
+  progressivi estratti correttamente. Verificato anche un **cedolino Zucchetti reale**
+  (Turismo H052, giugno 2026): 27/27 voci, totali, TFR, ratei e progressivi estratti;
   tutti i ricalcoli (IVS, IRPEF 2026, detrazioni, cuneo, detassazione rinnovi, quota TFR,
-  divisore 172, ferie 26 gg, ROL 104 h, maggiorazione festiva 20%) coerenti.
+  divisore 172, ferie in ore/giorni, ROL e maggiorazione festiva 20%) coerenti.
+- Test di regressione: `node tests/parser.test.mjs`.
 - App verificata in **Chromium** e **WebKit/Safari** su protocollo `file://` (Playwright):
   caricamento, lettura PDF, OCR inglobato e archivio locale funzionanti, zero errori console.
 - UI verificata su viewport desktop e mobile (375×812).

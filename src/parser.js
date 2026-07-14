@@ -499,6 +499,8 @@ function extractVoices(rec, allLines, warnings) {
     for (let i = headerIndex + 1; i < lines.length; i++) {
       const text = normalizzaTesto(lines[i].text);
       if (i > headerIndex + 2 && stopRe.test(text)) break;
+      if (/^X\s*=|L['’]EVENTO\s+CONTINUA|CAUSALE\s+PRESENZE/i.test(text)) break;
+      if (numericCells(lines[i]).length >= 10 && /TOTALE/i.test(text)) break;
       if (/RETRIBUZIONE\s+UTILE\s+T\.?\s*F\.?\s*R\.?/i.test(text)) {
         const value = lastNumInLine(lines[i]);
         if (value != null) rec.tfr.retribUtile = value;
@@ -567,7 +569,9 @@ function extractFiscalSummary(rec, allLines) {
   const definitions = [
     { re: /^IMPONIBILE\s+FISCALE$/i, code: 'F02000', description: 'Imponibile fiscale', field: 'base' },
     { re: /^IRPEF\s+LORDA$/i, code: 'F02010', description: 'IRPEF lorda', field: 'base' },
+    { re: /^IRPEF\s*\+\s*IMP\.?\s*SOST\.?$/i, code: 'F03020', description: 'Ritenute IRPEF e imposta sostitutiva', field: 'trattenuta' },
     { re: /DETR\.?\s+LAV\.?\s*DIPENDENTE/i, code: 'F02500', description: 'Detrazioni lavoro dipendente', field: 'base' },
+    { re: /^U\.?\s*D\.?$/i, code: 'F02801', description: 'Ulteriore detrazione', field: 'base' },
   ];
   for (const lines of allLines) {
     for (let i = 0; i < lines.length; i++) {
@@ -723,10 +727,27 @@ function extractHours(rec, allLines, fullText) {
   for (const lines of allLines) {
     for (let i = 0; i < lines.length; i++) {
       for (const cell of lines[i].cells) {
-        if (!/ORE\s+(?:ORDINARIE\s+)?LAVORATE|ORE\s+LAVORATE\s+ORDINARIE/i.test(normalizzaTesto(cell.str))) continue;
-        const sameLine = lines[i].cells.filter(candidate => candidate.x > cell.x).map(candidate => itNum(candidate.str)).filter(value => value != null);
-        const value = sameLine.length ? sameLine[sameLine.length - 1] : numberBelow(lines, i, cell, 2, 100);
-        if (value != null) rec.orario.oreOrdinarie = value;
+        const label = normalizzaTesto(cell.str);
+        if (/RETRIBUZIONE\s+ORARIA|PAGA\s+ORARIA|TARIFFA\s+ORARIA/i.test(label)) {
+          const value = numberForLabel(lines, i, cell, { maxRows: 3, belowDx: 80, sameLineDx: 130 });
+          if (value != null) rec.orario.pagaOraria = value;
+          continue;
+        }
+        if (/RETRIBUZIONE\s+GIORNALIERA|PAGA\s+GIORNALIERA|TARIFFA\s+GIORNALIERA/i.test(label)) {
+          const value = numberForLabel(lines, i, cell, { maxRows: 3, belowDx: 80, sameLineDx: 130 });
+          if (value != null) rec.orario.pagaGiornaliera = value;
+          continue;
+        }
+        if (/(?:GG\.?|GIORNI?)\s+LAVORATI/i.test(label)) {
+          const value = numberForLabel(lines, i, cell, { maxRows: 3, belowDx: 55, sameLineDx: 90 });
+          if (value != null) rec.orario.giorniLavorati = value;
+          continue;
+        }
+        if (/ORE\s+(?:ORDINARIE\s+)?LAVORATE|ORE\s+LAVORATE\s+ORDINARIE/i.test(label)) {
+          const sameLine = lines[i].cells.filter(candidate => candidate.x > cell.x).map(candidate => itNum(candidate.str)).filter(value => value != null);
+          const value = sameLine.length ? sameLine[sameLine.length - 1] : numberBelow(lines, i, cell, 2, 100);
+          if (value != null) rec.orario.oreOrdinarie = value;
+        }
       }
     }
   }
@@ -747,6 +768,30 @@ function inferMissingTotal(rec, warnings) {
   warnings.push('Il ' + inferred + ' non era leggibile ed è stato ricavato matematicamente dagli altri totali: verificalo sul cedolino.');
 }
 
+function quadraturaTotali(totals) {
+  const t = totals || {};
+  if (t.competenze == null || t.trattenute == null || t.netto == null) return { completa: false, ok: false };
+  const base = t.competenze - t.trattenute;
+  const rounding = t.arrotondamento || 0;
+  const withRounding = base + rounding;
+  const deltaWithRounding = Math.abs(withRounding - t.netto);
+  const deltaBase = Math.abs(base - t.netto);
+  if (deltaWithRounding <= 0.05) {
+    return { completa: true, ok: true, modalita: 'arrotondamento-dichiarato', atteso: withRounding, base, scarto: deltaWithRounding };
+  }
+  if (deltaBase <= 0.05 || (Number.isInteger(t.netto) && deltaBase <= 0.51)) {
+    return { completa: true, ok: true, modalita: 'netto-arrotondato', atteso: base, base, scarto: deltaBase };
+  }
+  return {
+    completa: true,
+    ok: false,
+    modalita: deltaWithRounding < deltaBase ? 'arrotondamento-dichiarato' : 'senza-arrotondamento',
+    atteso: deltaWithRounding < deltaBase ? withRounding : base,
+    base,
+    scarto: Math.min(deltaWithRounding, deltaBase),
+  };
+}
+
 function valutaQualita(rec) {
   let score = 0;
   const details = [];
@@ -761,14 +806,13 @@ function valutaQualita(rec) {
   const structured = rec.voci.filter(voice => voice.competenza != null || voice.trattenuta != null);
   score += Math.min(10, structured.length * 2);
   for (const key of ['competenze', 'trattenute', 'netto']) if (rec.totali[key] != null) score += 8;
-  if (rec.totali.competenze != null && rec.totali.trattenute != null && rec.totali.netto != null) {
-    const expected = rec.totali.competenze - rec.totali.trattenute + (rec.totali.arrotondamento || 0);
-    const delta = Math.abs(expected - rec.totali.netto);
-    if (delta <= 0.05) {
+  const quadratura = quadraturaTotali(rec.totali);
+  if (quadratura.completa) {
+    if (quadratura.ok) {
       score += 6;
       details.push('Quadratura del netto riuscita');
     } else {
-      details.push('Quadratura del netto da controllare (scarto ' + fmtEur(delta) + ' €)');
+      details.push('Quadratura del netto da controllare (scarto ' + fmtEur(quadratura.scarto) + ' €)');
     }
   }
   if (rec.tfr.quotaMese != null || rec.tfr.retribUtile != null) score += 4;
@@ -780,9 +824,33 @@ function valutaQualita(rec) {
   return { score, livello: level, dettagli: details };
 }
 
+function isCalendarArtifact(voice) {
+  if (!voice || String(voice.descrizione || '').trim()) return false;
+  const code = String(voice.codice || '').trim();
+  if (!/^\d{1,2}$/.test(code)) return false;
+  const values = [Number(code), voice.base, voice.rifQta, voice.trattenuta, voice.competenza]
+    .filter(value => value != null && Number.isFinite(Number(value)))
+    .map(Number);
+  return values.length >= 4 && values.every(value => Number.isInteger(value) && value >= 1 && value <= 31);
+}
+
+function ripulisciVoci(rec) {
+  rec.voci = (rec.voci || []).filter(voice => voice && (voice.descrizione || voice.codice) && !isCalendarArtifact(voice));
+  return rec;
+}
+
+function ripulisciRecord(rec) {
+  if (!rec || typeof rec !== 'object') return rec;
+  rec.meta = rec.meta || { fonte: 'sconosciuta', software: 'layout non identificato', inferiti: [] };
+  ripulisciVoci(rec);
+  rec.derivati = derivaIndice(rec);
+  rec.meta.qualita = valutaQualita(rec);
+  return rec;
+}
+
 function finalizzaRecord(rec, warnings) {
   inferMissingTotal(rec, warnings);
-  rec.voci = rec.voci.filter(voice => voice && (voice.descrizione || voice.codice));
+  ripulisciVoci(rec);
   rec.derivati = derivaIndice(rec);
   rec.meta.qualita = valutaQualita(rec);
   if (!rec.periodo) warnings.push('Periodo di retribuzione non riconosciuto: inseriscilo a mano.');
@@ -900,16 +968,26 @@ function derivaIndice(rec) {
   if (thirteenth) d.rateo13 = thirteenth.competenza;
   const fourteenth = desc(/14.?MA|QUATTORDICESIMA/i);
   if (fourteenth) d.rateo14 = fourteenth.competenza;
-  const ordinary = code('Z00001') || code('0') || desc(/^RETRIBUZIONE(?:\s+ORDINARIA)?$/i);
-  if (ordinary) d.retribuzione = { oraria: ordinary.base, ore: ordinary.rifQta, importo: ordinary.competenza };
-  const regional = code('F09110') || desc(/ADDIZIONALE\s+REGIONALE/i);
+  const ordinary = code('Z00001') || code('0') || desc(/^(?:RETRIBUZIONE|PAGA|LAVORO)\s+(?:ORDINARIA|NORMALE)$/i);
+  if (ordinary) {
+    const unit = String(ordinary.rifUnita || '').toUpperCase();
+    d.retribuzione = {
+      oraria: /^(?:ORE|ORA|H)$/.test(unit) ? ordinary.base : (rec.orario && rec.orario.pagaOraria != null ? rec.orario.pagaOraria : null),
+      giornaliera: /^(?:GG|GIORNO|GIORNI)$/.test(unit) ? ordinary.base : (rec.orario && rec.orario.pagaGiornaliera != null ? rec.orario.pagaGiornaliera : null),
+      quantita: ordinary.rifQta,
+      unita: unit,
+      importo: ordinary.competenza,
+    };
+  }
+  const regional = code('F09110') || desc(/ADDIZ(?:IONALE|\.)?\s*(?:REGION|REG\.)/i);
   if (regional) d.addRegionale = regional.trattenuta;
-  const municipal = code('F09101') || desc(/ADDIZIONALE\s+COMUNALE/i);
+  const municipal = code('F09101') || desc(/ADDIZ(?:IONALE|\.)?\s*(?:COMUN|COM\.)/i);
   if (municipal) d.addComunale = municipal.trattenuta;
   const sunday = desc(/DOMENICAL/i);
   if (sunday) d.domenicale = { oraria: sunday.base, ore: sunday.rifQta, importo: sunday.competenza };
-  const holiday = by(voice => /FESTIV/i.test(voice.descrizione || '') && voice.competenza != null && !/EX\s*FEST/i.test(voice.descrizione || ''));
-  if (holiday) d.festivo = { oraria: holiday.base, ore: holiday.rifQta, importo: holiday.competenza };
+  const holiday = by(voice => /MAGG.*FESTIV|LAVORO\s+FESTIV|FESTIV.*MAGG/i.test(voice.descrizione || '') && voice.competenza != null)
+    || by(voice => /FESTIV/i.test(voice.descrizione || '') && /^(?:ORE|ORA|H)$/i.test(voice.rifUnita || '') && voice.competenza != null && !/EX\s*FEST/i.test(voice.descrizione || ''));
+  if (holiday) d.festivo = { oraria: holiday.base, ore: holiday.rifQta, importo: holiday.competenza, descrizione: holiday.descrizione };
   return d;
 }
 
@@ -930,4 +1008,4 @@ function trovaCcnl(rec, db, custom = []) {
 }
 
 // eslint-disable-next-line no-unused-vars
-const Parser = { parsePdfPages, parseFreeText, trovaCcnl, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, normalizzaTesto };
+const Parser = { parsePdfPages, parseFreeText, trovaCcnl, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, normalizzaTesto, ripulisciRecord, quadraturaTotali };

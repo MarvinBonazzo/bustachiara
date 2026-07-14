@@ -25,7 +25,7 @@ const FONTI = {
   fisascat:  { label: 'FISASCAT CISL', url: 'https://www.fisascat.it', cosa: 'Sindacato commercio/turismo: sintesi dei rinnovi e tabelle.' },
   uiltucs:   { label: 'UILTuCS', url: 'https://www.uiltucs.it', cosa: 'Sindacato commercio/turismo.' },
   federalberghi: { label: 'Federalberghi (parte datoriale CCNL Turismo)', url: 'https://www.federalberghi.it', cosa: 'Testo e circolari applicative del CCNL Turismo — Alberghi.' },
-  fipe:      { label: 'FIPE (pubblici esercizi/ristorazione)', url: 'https://www.fipe.it', cosa: 'Parte datoriale del CCNL Pubblici Esercizi e Ristorazione.' },
+  fipe:      { label: 'FIPE — testo CCNL Pubblici Esercizi H05Y', url: 'https://www.fipe.it/2025/03/10/area-lavoro/ccnl-fipe-testo/ccnl-fipe-il-testo/', cosa: 'Pagina ufficiale FIPE del CCNL Pubblici Esercizi, Ristorazione collettiva e commerciale e Turismo, codice CNEL H05Y.' },
   confcommercio: { label: 'Confcommercio', url: 'https://www.confcommercio.it', cosa: 'Parte datoriale dei CCNL Terziario e Turismo.' },
   contrattocommercio: { label: 'Testo CCNL Terziario (commentato)', url: 'https://www.contrattocommercio.it', cosa: 'Articolato completo del CCNL Commercio/Terziario, articolo per articolo.' },
   patronato: { label: 'Patronato / CAF (INCA, ACLI, ITAL…)', url: 'https://www.inca.it', cosa: 'Controllo gratuito di buste paga, posizioni contributive, dimissioni, vertenze.' },
@@ -148,7 +148,7 @@ const CCNL_DB = [
   },
   {
     id: 'pubblici-esercizi-fipe', nome: 'Pubblici Esercizi, Ristorazione e Turismo (FIPE)',
-    cnel: [], match: [/pubblici esercizi/i, /fipe/i, /ristorazione(?! collettiva angem)/i],
+    cnel: ['H05Y'], match: [/pubblici esercizi/i, /fipe/i, /ristorazione(?! collettiva angem)/i, /stabilimenti?\s+balneari/i, /h05y/i],
     firmatari: 'FIPE-Confcommercio + Filcams, Fisascat, Uiltucs (rinnovo giugno 2024)',
     ferie: { giorni: 26, nota: '26 giorni lavorativi (settimana su 6 giorni).', verificato: true },
     rol: { ore: 104, scaglioni: '32 ore nei primi 2 anni di anzianità, 68 dal 3°, 104 dal 4° (ROL + ex festività).', verificato: false },
@@ -411,46 +411,133 @@ const VOCI_CODICI = {
 
 /* ---------- Dizionario voci: per PAROLE CHIAVE (qualsiasi software paghe) ---------- */
 const VOCI_PATTERN = [
+  { re: /^(?:retribuzione|paga|lavoro)\s+(?:ordinaria|normale)|^ore\s+ordinarie|^stipendio(?:\s+base)?$/i, nome: 'Retribuzione ordinaria', cat: 'competenza', cosa: 'È la paga del lavoro ordinario del mese. Può essere calcolata a ore oppure a giornate: quantità × tariffa deve restituire l’importo della riga.', controlla: 'Confronta quantità, tariffa oraria o giornaliera e giorni/ore effettivamente lavorati.' },
+  { re: /magg\.?\s*(?:per\s+)?riposo\s+settimanale|riposo\s+settimanale.*magg/i, nome: 'Maggiorazione per riposo settimanale spostato', cat: 'competenza', cosa: 'Compenso aggiuntivo perché il riposo settimanale non coincide con la domenica o con il giorno normalmente previsto. La percentuale è indicata nella descrizione della voce.', controlla: 'Nel cedolino la voce riporta il 10%: la tariffa della maggiorazione va confrontata con la tariffa oraria ordinaria.' },
+  { re: /magg\.?.*festiv|festiv.*maggioraz/i, nome: 'Maggiorazione per lavoro festivo', cat: 'competenza', cosa: 'Compenso per lavoro prestato in festività. Una dicitura “120%” di solito indica una tariffa pari al 120% dell’ordinaria, cioè una maggiorazione effettiva del 20%, salvo diversa regola del CCNL.', controlla: 'Tariffa della voce ÷ tariffa oraria ordinaria − 1 = percentuale di maggiorazione. Verifica anche eventuale riposo compensativo.' },
+  { re: /^festivit[aà]'?$|festivit[aà]\s+retribuit/i, nome: 'Festività retribuita', cat: 'competenza', cosa: 'Retribuzione della giornata festiva. È distinta dall’eventuale maggiorazione per le ore effettivamente lavorate durante la festività.', controlla: 'Controlla il numero di giornate e la tariffa giornaliera.' },
   { re: /straordinar/i, nome: 'Straordinario', cat: 'competenza', cosa: 'Ore oltre l’orario normale, pagate con maggiorazione fissata dal CCNL (tipicamente +15% ÷ +50%; di più se notturno o festivo).', controlla: 'Verifica la % di maggiorazione sull’articolo “lavoro straordinario” del tuo CCNL. Ricorda il tetto legale medio di 48 ore/settimana.' },
   { re: /notturn/i, nome: 'Lavoro notturno', cat: 'competenza', cosa: 'Maggiorazione per lavoro in orario notturno (definizione e % nel CCNL; tutele extra nel D.lgs. 66/2003).', controlla: 'Percentuale e fascia oraria dal CCNL.' },
   { re: /festiv/i, nome: 'Lavoro festivo / festività', cat: 'competenza', cosa: 'Lavoro prestato in giorno festivo: paga maggiorata (spesso +20% ÷ +60%) o riposo compensativo. Se la festività NON è lavorata e cade in giorno lavorativo, va comunque retribuita.', controlla: 'Nel cedolino di esempio: tariffa 13,95 = 11,63 + 20%. Verifica la % del tuo CCNL.' },
   { re: /domenical/i, nome: 'Lavoro domenicale', cat: 'competenza', cosa: 'Nel turismo/commercio la domenica può essere giorno lavorativo ordinario con riposo compensativo in settimana: la maggiorazione NON è sempre dovuta e cambia molto tra CCNL (e tra livelli).', controlla: 'Cerca “lavoro domenicale” nel tuo CCNL: se prevede maggiorazione e in busta non c’è, chiedi spiegazioni.' },
   { re: /ferie/i, nome: 'Ferie', cat: 'competenza', cosa: 'Ferie godute o indennità ferie (quest’ultima legittima solo a fine rapporto).', controlla: 'Minimo di legge: 4 settimane/anno. Controlla il saldo nei Ratei.' },
+  { re: /permesso.*(?:104|handicap)|legge\s*104|donazione\s+sangue|congedo\s+matrimonial|permesso\s+studio/i, nome: 'Permesso tutelato', cat: 'competenza', cosa: 'Assenza retribuita prevista dalla legge o dal CCNL, ad esempio L. 104, donazione sangue, matrimonio o studio.', controlla: 'Verifica giornate/ore, causale e corretta copertura contributiva.' },
+  { re: /permess|par\b|banca\s+ore/i, nome: 'Permessi retribuiti / banca ore', cat: 'competenza', cosa: 'Ore di permesso retribuito, PAR/ROL o recupero dalla banca ore. Di norma riducono il saldo del relativo rateo.', controlla: 'Confronta le ore della voce con le assenze e con il saldo permessi.' },
   { re: /\brol\b|riduzione orario/i, nome: 'ROL', cat: 'competenza', cosa: 'Permessi retribuiti da riduzione dell’orario di lavoro.', controlla: 'Monte ore annuo dal CCNL (dipende spesso da anzianità e dimensione azienda).' },
   { re: /ex\s*festiv|festivit.*soppresse/i, nome: 'Ex festività', cat: 'competenza', cosa: 'Permessi che compensano le 4 festività abolite nel 1977 (tipicamente 32 ore/anno).', controlla: 'Se non li vedi maturare nei ratei e il CCNL li prevede, chiedi.' },
   { re: /tredicesima|13.?ma|13ª/i, nome: 'Tredicesima', cat: 'competenza', cosa: 'Mensilità aggiuntiva di dicembre, prevista da tutti i principali CCNL. Su di essa NON si applicano le detrazioni mensili: per questo a dicembre la tassazione “sembra” più alta.', controlla: 'Se ricevi ratei mensili, a dicembre non arriva l’importo pieno.' },
   { re: /quattordicesima|14.?ma|14ª/i, nome: 'Quattordicesima', cat: 'competenza', cosa: 'Seconda mensilità aggiuntiva (giugno/luglio), prevista solo da alcuni CCNL (Commercio, Turismo, Trasporti…).', controlla: 'Verifica che il tuo CCNL la preveda e il periodo di maturazione (spesso 1/7–30/6).' },
+  { re: /gratifica\s+natalizia/i, nome: 'Tredicesima / gratifica natalizia', cat: 'competenza', cosa: 'Mensilità aggiuntiva normalmente pagata a dicembre; in alcuni settori è indicata come gratifica natalizia.', controlla: 'Confronta periodo maturato e importo con le regole del CCNL.' },
+  { re: /arretrat|differenz[ae]\s+retributiv|recupero\s+contrattuale/i, nome: 'Arretrati o differenze retributive', cat: 'competenza', cosa: 'Somme riferite a mesi precedenti, spesso dovute a rinnovi contrattuali, correzioni di livello o ricalcoli.', controlla: 'La descrizione dovrebbe indicare il periodo: verifica quantità, imponibilità e cedolini interessati.' },
+  { re: /elemento\s+(?:perequativo|distinto)|e\.d\.r\.?/i, nome: 'Elemento retributivo contrattuale', cat: 'competenza', cosa: 'Elemento fisso o periodico previsto dal contratto collettivo, distinto dalla paga base.', controlla: 'Importo e periodicità devono coincidere con la tabella del CCNL applicato.' },
   { re: /superminimo|sup\.?\s*ass|assorbibile/i, nome: 'Superminimo', cat: 'competenza', cosa: 'Quota di paga sopra il minimo contrattuale, pattuita individualmente. Se “assorbibile”, gli aumenti del CCNL la riducono invece di sommarsi: l’aumento del rinnovo può non farti crescere il lordo.', controlla: 'BRUTALE: superminimo assorbibile = i futuri aumenti contrattuali li hai già presi. Se firmi un nuovo contratto, chiedi superminimo NON assorbibile.' },
   { re: /scatt.*anzianit/i, nome: 'Scatti di anzianità', cat: 'competenza', cosa: 'Aumenti automatici ogni 2-3 anni di permanenza (numero massimo e importi da CCNL).', controlla: 'Data del prossimo scatto spesso stampata sul cedolino: segnala se passa senza aumento.' },
   { re: /contingenza/i, nome: 'Indennità di contingenza', cat: 'competenza', cosa: 'Vecchia indennità di adeguamento al costo della vita, congelata dal 1992; in molti CCNL è “conglobata” nella paga base.', controlla: '' },
   { re: /\bedr\b/i, nome: 'E.D.R.', cat: 'competenza', cosa: 'Elemento Distinto della Retribuzione (10,33 €/mese del 1992, o importi specifici di settore).', controlla: '' },
-  { re: /ivs|f\.?p\.?l\.?d|contribut.*inps/i, nome: 'Contributi INPS (IVS)', cat: 'trattenuta', cosa: 'Il tuo 9,19% per la pensione (9,49% aziende CIGS).', controlla: 'Imponibile × aliquota. Controlla una volta l’anno il tuo estratto conto su inps.it: i versamenti devono comparire.', fonti: ['inps'] },
+  { re: /indennit[aà].*(?:turno|turnistica)|(?:turno|turnistica).*indennit/i, nome: 'Indennità di turno', cat: 'competenza', cosa: 'Compenso collegato al lavoro organizzato su turni. Può essere fisso oppure calcolato per ore o giornate.', controlla: 'Importo e condizioni dipendono dal CCNL o dall’accordo aziendale.' },
+  { re: /indennit[aà].*(?:cassa|maneggio\s+denaro)|(?:cassa|maneggio\s+denaro).*indennit/i, nome: 'Indennità di cassa', cat: 'competenza', cosa: 'Compenso per chi gestisce denaro e risponde di eventuali differenze di cassa.', controlla: 'Verifica importo e figure aventi diritto nel CCNL.' },
+  { re: /indennit[aà].*(?:funzione|quadro)|(?:funzione|quadro).*indennit/i, nome: 'Indennità di funzione', cat: 'competenza', cosa: 'Elemento aggiuntivo legato al ruolo, alla responsabilità o all’inquadramento.', controlla: 'Controlla se è previsto dal CCNL, da una lettera individuale o da un accordo aziendale.' },
+  { re: /reperibilit[aà]|pronta\s+disponibilit[aà]/i, nome: 'Reperibilità', cat: 'competenza', cosa: 'Compenso per il periodo in cui devi essere disponibile a intervenire pur non lavorando continuativamente.', controlla: 'Verifica ore, chiamate effettive e tariffa prevista dal CCNL o dall’accordo aziendale.' },
+  { re: /disagio|rischio|nociv|alta\s+montagna|sottosuolo/i, nome: 'Indennità di disagio o rischio', cat: 'competenza', cosa: 'Compenso aggiuntivo legato a condizioni di lavoro particolari o gravose.', controlla: 'La causale e l’importo devono derivare dal CCNL o da un accordo aziendale.' },
+  { re: /indennit[aà]\s+(?:generica|contrattuale|aziendale)|(?:ind\.?|indennit[aà])\s+(?:speciale|professionale|posizione)/i, nome: 'Indennità contrattuale o aziendale', cat: 'competenza', cosa: 'Compenso aggiuntivo previsto dal CCNL, da un accordo aziendale o dalla lettera individuale.', controlla: 'Cerca la stessa denominazione nel contratto o nell’accordo e verifica se l’importo è fisso o legato a ore/giorni.' },
+  { re: /preavviso|indennit[aà]\s+sostitutiva/i, nome: 'Indennità o trattenuta di preavviso', cat: 'dato', cosa: 'Somma collegata al mancato periodo di preavviso alla cessazione: può essere a credito o a debito secondo chi recede e perché.', controlla: 'Verifica durata prevista dal CCNL, data di cessazione e lato della colonna in cui compare.' },
+  { re: /\bcigs\b|cassa\s+integrazione\s+straordinaria/i, nome: 'Contributo CIGS', cat: 'trattenuta', cosa: 'Quota per la cassa integrazione straordinaria, applicabile ai settori e alle aziende soggetti alla relativa disciplina.', controlla: 'Controlla imponibile e aliquota esposta; la presenza dipende da settore e dimensione aziendale.', fonti: ['inps'] },
   { re: /\bfis\b|integrazione salariale/i, nome: 'Contributo FIS', cat: 'trattenuta', cosa: 'Ammortizzatore per aziende senza CIG ordinaria; 1/3 dell’aliquota è a tuo carico.', controlla: '', fonti: ['inps'] },
-  { re: /cigs/i, nome: 'Contributo CIGS', cat: 'trattenuta', cosa: 'Cassa integrazione straordinaria (aziende > 15 dipendenti di alcuni settori): 0,30% a carico lavoratore.', controlla: '', fonti: ['inps'] },
-  { re: /ente\s*bilat|e\.?b\.?t|ebt/i, nome: 'Ente bilaterale', cat: 'trattenuta', cosa: 'Contributo (piccolo, es. 0,30%) all’ente paritetico territoriale del settore: finanzia sussidi, formazione, integrazioni. Spesso c’è anche la quota azienda “C/Ditta”.', controlla: 'Gli enti bilaterali del turismo/commercio erogano prestazioni (contributi libri scuola, sussidi): informati, li stai pagando.' },
+  { re: /\b(?:INPS|IVS)\b|f\.?p\.?l\.?d|contribut.*inps/i, nome: 'Contributi INPS (IVS)', cat: 'trattenuta', cosa: 'Il tuo contributo previdenziale, normalmente destinato in gran parte alla pensione. L’aliquota dipende da settore, qualifica e tipo di rapporto.', controlla: 'Imponibile × aliquota. Controlla una volta l’anno il tuo estratto conto su inps.it: i versamenti devono comparire.', fonti: ['inps'] },
+  { re: /contributo\s+(?:solidariet[aà]|aggiuntivo)|solidariet[aà]\s+previdenziale/i, nome: 'Contributo previdenziale aggiuntivo', cat: 'trattenuta', cosa: 'Contributo aggiuntivo o di solidarietà previsto per particolari fondi, imponibili o categorie di lavoratori.', controlla: 'Verifica base, aliquota e riferimento normativo indicato dal gestionale.', fonti: ['inps'] },
+  { re: /ente\s*bil(?:at)?\.?|e\.?b\.?t|ebt/i, nome: 'Ente bilaterale', cat: 'trattenuta', cosa: 'Contributo all’ente paritetico territoriale del settore: finanzia sussidi, formazione e integrazioni. Spesso esiste anche una quota a carico dell’azienda.', controlla: 'Gli enti bilaterali del turismo/commercio possono erogare prestazioni e sussidi: verifica a quale ente sei iscritto.' },
   { re: /fondo\s*(fast|est|sani|salute)|metasalute|sanimoda|cadiprof|faschim|fasa\b|sanilog|asim|san\.?arti/i, nome: 'Sanità integrativa', cat: 'trattenuta', cosa: 'Fondo sanitario del CCNL: rimborsa visite, diagnostica, ticket secondo il nomenclatore del fondo.', controlla: 'Registrati sul sito del fondo e usalo: se non lo usi, sono soldi persi.' },
   { re: /fon\.?te|cometa|fonchim|alifond|previmoda|prevedi|telemaco|byblos|previambiente|fondapi|fontemp|previdenza compl|fondo pens/i, nome: 'Fondo pensione negoziale', cat: 'trattenuta', cosa: 'Il tuo versamento al fondo pensione di categoria (+ quota datore + eventuale TFR). La quota a tuo carico è deducibile: riduce l’IRPEF.', controlla: 'Verifica sul sito del fondo che i versamenti arrivino (estratto conto annuale).', fonti: ['covip'] },
   { re: /irpef/i, nome: 'IRPEF', cat: 'trattenuta', cosa: 'Imposta sul reddito trattenuta alla fonte dal datore come sostituto d’imposta.', controlla: '', fonti: ['ade'] },
   { re: /detrazion/i, nome: 'Detrazioni', cat: 'dato', cosa: 'Sconti d’imposta (lavoro dipendente, familiari a carico…). Ricordati di comunicare al datore i familiari a carico: senza comunicazione non li applica.', controlla: '', fonti: ['ade'] },
-  { re: /addizionale\s*region/i, nome: 'Addizionale regionale', cat: 'trattenuta', cosa: 'Imposta regionale sull’imponibile dell’anno precedente, in 11 rate.', controlla: '', fonti: ['finanze'] },
-  { re: /addizionale\s*comun/i, nome: 'Addizionale comunale', cat: 'trattenuta', cosa: 'Imposta comunale: saldo (anno precedente, 11 rate) + acconto 30% (marzo-novembre).', controlla: '', fonti: ['finanze'] },
+  { re: /addiz(?:ionale|\.)?\s*(?:region|reg\.)/i, nome: 'Addizionale regionale', cat: 'trattenuta', cosa: 'Imposta regionale sull’imponibile dell’anno precedente, normalmente trattenuta a rate.', controlla: 'L’anno scritto nella voce indica il periodo fiscale a cui si riferisce.', fonti: ['finanze'] },
+  { re: /addiz(?:ionale|\.)?\s*(?:comun|com\.)/i, nome: 'Addizionale comunale', cat: 'trattenuta', cosa: 'Imposta comunale: saldo dell’anno precedente e/o acconto dell’anno corrente, trattenuti a rate.', controlla: 'Controlla aliquota e soglia di esenzione del comune nelle tabelle del Dipartimento Finanze.', fonti: ['finanze'] },
   { re: /trattamento\s*integrativo|l\.?\s*21\/2020|bonus\s*irpef|ex\s*bonus\s*renzi/i, nome: 'Trattamento integrativo', cat: 'competenza', cosa: 'Fino a 100 €/mese per redditi bassi (fino a 15.000 €, o 28.000 con capienza particolare).', controlla: 'Se il reddito supera la soglia a conguaglio, va restituito (a rate): occhio alla voce di recupero.', fonti: ['ade'] },
   { re: /assegno\s*unico|\banf\b|assegni\s*familiari/i, nome: 'Assegno unico / ANF', cat: 'competenza', cosa: 'Dal 2022 l’Assegno Unico per i figli lo paga DIRETTAMENTE l’INPS (domanda su inps.it), non passa più dalla busta. In busta restano solo vecchi ANF residuali.', controlla: '', fonti: ['inps'] },
   { re: /malattia/i, nome: 'Malattia', cat: 'competenza', cosa: 'Indennità INPS + integrazione datore secondo CCNL. In busta la vedi spesso divisa in “c/INPS” e “c/ditta”.', controlla: 'Percentuali di integrazione nell’articolo “malattia” del CCNL.', fonti: ['inps'] },
+  { re: /carenza/i, nome: 'Carenza malattia', cat: 'competenza', cosa: 'Sono i primi giorni di malattia, non indennizzati dall’INPS e pagati dal datore solo secondo le regole del CCNL.', controlla: 'Verifica numero di giorni, percentuale e limite di eventi previsto dal contratto.' },
   { re: /maternit|congedo|parentale/i, nome: 'Maternità/congedi', cat: 'competenza', cosa: 'Indennità INPS (80% obbligatoria; parentale a percentuali variabili) spesso integrata dal CCNL.', controlla: '', fonti: ['inps'] },
   { re: /infortun/i, nome: 'Infortunio (INAIL)', cat: 'competenza', cosa: 'Indennità INAIL dal 4° giorno (60%→75%) + integrazioni CCNL; i primi 3 giorni a carico datore.', controlla: '' },
   { re: /mensa|buoni\s*pasto|ticket/i, nome: 'Buoni pasto / mensa', cat: 'competenza', cosa: 'Esenti da tasse e contributi fino a 4 € (cartacei) / 8 € (elettronici) al giorno.', controlla: '' },
   { re: /trasfert|diaria/i, nome: 'Trasferta', cat: 'competenza', cosa: 'Indennità esente entro 46,48 €/giorno in Italia (77,47 estero) se fuori dal comune; regole diverse per i “trasfertisti”.', controlla: '' },
+  { re: /rimborso\s+spese|rimb\.?\s*spese|rimborso\s+(?:km|chilometr)/i, nome: 'Rimborso spese', cat: 'competenza', cosa: 'Restituzione di spese sostenute per lavoro. Può non essere imponibile se documentata e trattata secondo le regole fiscali.', controlla: 'Confronta importo, nota spese e giustificativi.' },
+  { re: /fringe\s*benefit|benefit\s+in\s+natura|auto\s+aziendale/i, nome: 'Fringe benefit', cat: 'dato', cosa: 'Valore fiscale di beni o servizi concessi dall’azienda, come auto, alloggio o utenze. Può aumentare imponibile e contributi anche senza essere denaro pagato nel netto.', controlla: 'Verifica il valore convenzionale e la soglia di esenzione dell’anno.' },
   { re: /welfare/i, nome: 'Welfare aziendale', cat: 'competenza', cosa: 'Beni e servizi esenti entro i limiti annui dei fringe benefit fissati dalla legge di bilancio (soglie più alte per chi ha figli).', controlla: 'La soglia cambia di anno in anno: verificala.', fonti: ['ade'] },
   { re: /premio|risultato|produzion/i, nome: 'Premio di risultato', cat: 'competenza', cosa: 'Se previsto da accordo depositato, tassato al 5% fino a 3.000 € (detassazione premi).', controlla: '', fonti: ['ade'] },
+  { re: /provvig|commissioni|incentiv/i, nome: 'Provvigioni o incentivi', cat: 'competenza', cosa: 'Compenso variabile collegato a vendite, obiettivi o risultati individuali.', controlla: 'Confronta il calcolo con il piano incentivi o l’accordo scritto.' },
   { re: /una\s*tantum/i, nome: 'Una tantum', cat: 'competenza', cosa: 'Erogazione arretrata prevista dal rinnovo del CCNL per coprire il periodo senza contratto.', controlla: 'Importi e rate sono scritti nell’accordo di rinnovo.' },
+  { re: /vacanza\s+contrattuale|i\.?v\.?c\.?/i, nome: 'Indennità di vacanza contrattuale', cat: 'competenza', cosa: 'Importo temporaneo riconosciuto quando un CCNL è scaduto e il rinnovo non è ancora stato definito.', controlla: 'Verifica decorrenza e percentuale nell’accordo o nelle comunicazioni di rinnovo.' },
   { re: /arrotond/i, nome: 'Arrotondamento', cat: 'dato', cosa: 'Centesimi spostati al mese dopo per arrotondare il netto: partita di giro.', controlla: '' },
   { re: /congua/i, nome: 'Conguaglio', cat: 'dato', cosa: 'Ricalcolo di fine anno (o fine rapporto) di IRPEF e detrazioni sull’effettivo reddito annuo: può dare importi a credito o a debito a dicembre.', controlla: 'Confronta col prospetto della CU dell’anno.' },
   { re: /cession|pignoram|delegazion/i, nome: 'Cessione del quinto / pignoramento', cat: 'trattenuta', cosa: 'Trattenuta per prestiti o pignoramenti: per legge max 1/5 del netto (limiti diversi se concorrono più cause).', controlla: 'Il totale ceduto non può superare il quinto.' },
+  { re: /trattenuta\s+prestito|rata\s+prestito|anticipo\s+stipendio|recupero\s+anticipo/i, nome: 'Prestito o anticipo da recuperare', cat: 'trattenuta', cosa: 'Rata di un prestito aziendale o recupero di una somma anticipata in precedenza.', controlla: 'Confronta con il piano di rimborso o con il cedolino in cui è stato erogato l’anticipo.' },
+  { re: /assenza\s+non\s+retrib|permesso\s+non\s+retrib|aspettativa\s+non\s+retrib|sciopero/i, nome: 'Assenza non retribuita', cat: 'trattenuta', cosa: 'Riduzione della paga per ore o giornate non retribuite, come permesso non pagato, aspettativa o sciopero.', controlla: 'Verifica quantità e giornate sul cartellino presenze.' },
   { re: /sindacal/i, nome: 'Quota sindacale', cat: 'trattenuta', cosa: 'Iscrizione al sindacato (≈1% della paga base): volontaria, revocabile con comunicazione scritta.', controlla: '' },
   { re: /rimbors.*730|assistenza fiscale|credito 730/i, nome: 'Assistenza fiscale (730)', cat: 'dato', cosa: 'Crediti o debiti dalla dichiarazione, liquidati in busta da luglio.', controlla: 'Confronta col prospetto di liquidazione del 730.', fonti: ['ade'] },
   { re: /t\.?f\.?r/i, nome: 'TFR', cat: 'dato', cosa: 'Trattamento di fine rapporto: retribuzione utile ÷ 13,5 accantonata ogni anno (in azienda o al fondo pensione).', controlla: 'Vedi la sezione TFR del dettaglio e i Consigli.', fonti: ['normattiva'] },
 ];
+
+function espandiAbbreviazioniVoce(value) {
+  return String(value || '')
+    .replace(/\bretr\.(?=\s|$)/gi, 'retribuzione')
+    .replace(/\bmagg\.(?=\s|$)/gi, 'maggiorazione')
+    .replace(/\bind\.(?=\s|$)/gi, 'indennità')
+    .replace(/\bstraord\.(?=\s|$)/gi, 'straordinario')
+    .replace(/\bfest\.(?=\s|$)/gi, 'festività')
+    .replace(/\bperm\.(?=\s|$)/gi, 'permesso')
+    .replace(/\baddiz\.(?=\s|$)/gi, 'addizionale')
+    .replace(/\bcontr\.(?=\s|$)/gi, 'contributo')
+    .replace(/\brimb\.(?=\s|$)/gi, 'rimborso');
+}
+
+function classificaVoce(voce) {
+  const v = voce || {};
+  const code = String(v.codice || '').toUpperCase();
+  if (code && VOCI_CODICI[code]) return VOCI_CODICI[code];
+  const description = String(v.descrizione || '').trim();
+  const expandedDescription = espandiAbbreviazioniVoce(description);
+  for (const pattern of VOCI_PATTERN) {
+    pattern.re.lastIndex = 0;
+    if (pattern.re.test(description) || (expandedDescription !== description && pattern.re.test(expandedDescription))) return pattern;
+  }
+  if (v.costoAzienda != null || v.cDitta) {
+    return {
+      nome: 'Costo a carico dell’azienda',
+      cat: 'dato',
+      cosa: 'Importo informativo sostenuto dal datore: non viene sottratto dal tuo netto.',
+      controlla: 'Non sommarlo alle trattenute del dipendente.',
+    };
+  }
+  if (!description) {
+    return {
+      nome: 'Riga senza descrizione',
+      cat: 'dato',
+      cosa: 'Il documento non ha fornito una descrizione leggibile. La riga non va interpretata automaticamente come denaro ricevuto o trattenuto.',
+      controlla: 'Confronta codice e posizione con il PDF originale.',
+    };
+  }
+  if (v.trattenuta != null) {
+    return {
+      nome: 'Trattenuta da identificare',
+      cat: 'trattenuta',
+      cosa: 'È un importo sottratto al lordo o al netto, ma la causale non coincide ancora con una categoria generale affidabile.',
+      controlla: 'Controlla la descrizione sul cedolino e chiedi all’ufficio paghe solo se la causale resta poco chiara.',
+    };
+  }
+  if (v.competenza != null) {
+    return {
+      nome: 'Competenza retributiva da identificare',
+      cat: 'competenza',
+      cosa: 'È un importo riconosciuto a tuo favore. Può derivare da un accordo aziendale, una voce contrattuale locale o una causale specifica del gestionale.',
+      controlla: 'Verifica quantità, tariffa e riferimento nel contratto o nell’accordo aziendale.',
+    };
+  }
+  return {
+    nome: 'Dato di calcolo del cedolino',
+    cat: 'dato',
+    cosa: 'È una base, quantità o informazione tecnica usata nei calcoli e non necessariamente incide direttamente sul netto.',
+    controlla: 'Non considerarlo automaticamente una competenza o una trattenuta.',
+  };
+}
 
 /* ---------- Consigli: oggettivi, con versione in parole semplici ----------
    Ogni consiglio espone i fatti, cosa cambia con ciascuna scelta e dove

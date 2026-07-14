@@ -5,7 +5,10 @@ import vm from 'node:vm';
 const context = { console };
 vm.createContext(context);
 vm.runInContext(readFileSync(new URL('../src/parser.js', import.meta.url), 'utf8') + '\nthis.ParserUnderTest = Parser;', context);
+vm.runInContext(readFileSync(new URL('../src/data.js', import.meta.url), 'utf8') + '\nthis.DataUnderTest = { CCNL_DB, classificaVoce };', context);
+vm.runInContext(readFileSync(new URL('../src/checks.js', import.meta.url), 'utf8') + '\nthis.ChecksUnderTest = eseguiControlli;', context);
 const Parser = context.ParserUnderTest;
+const Data = context.DataUnderTest;
 
 function page(rows) {
   return rows.flatMap(([y, cells]) => cells.map(([x, str, width]) => ({
@@ -29,6 +32,8 @@ assert.equal(Parser.itNum('1.234'), 1234);
 const jet = Parser.parsePdfPages([page([
   [800, [[25, 'AZIENDA DIMOSTRATIVA S.R.L.'], [260, 'MESE DI RETRIBUZIONE']]],
   [786, [[260, 'GIUGNO 2026']]],
+  [770, [[258, 'GG. LAVORATI'], [335, 'ORE LAVORATE']]],
+  [758, [[270, '23'], [340, '153,41']]],
   [740, [[30, 'MARIO ESEMPIO']]],
   [728, [[30, 'COD.DIP.'], [72, 'LIVELLO'], [120, 'DESCRIZIONE QUALIFICA'], [370, 'Codice CNEL']]],
   [716, [[30, '000123 4'], [120, 'OPERAI'], [370, 'H05Y']]],
@@ -39,20 +44,26 @@ const jet = Parser.parsePdfPages([page([
   [636, [[27, '1.167,75000'], [100, '524,94000']]],
   [620, [[27, 'RETRIBUZIONE MENSILE']]],
   [608, [[27, '1.692,69']]],
+  [602, [[90, 'RETRIBUZIONE GIORNALIERA'], [166, 'RETRIBUZIONE ORARIA']]],
+  [596, [[90, '65,10346'], [166, '9,84122']]],
   [590, [[268, 'Ferie e permessi'], [372, 'RESIDUO AP.'], [411, 'MATURATI'], [445, 'GODUTI A.C.'], [480, 'GODUTI A.P.'], [530, 'TI RIMANGONO (SALDO)']]],
   [578, [[268, 'Ferie'], [346, '(ORE)'], [411, '86,42'], [445, '28,33'], [482, '31,70'], [538, '58,08']]],
   [566, [[268, 'ROL'], [346, '(ORE)'], [381, '6,66'], [411, '16,00'], [538, '22,66']]],
   [540, [[30, 'VOCE'], [52, 'DESCRIZIONE'], [265, 'Unità di Misura'], [305, 'Quantità'], [357, 'BASE'], [408, 'TRATTENUTE'], [477, 'COMPETENZE']]],
   [526, [[30, '0'], [50, 'Retribuzione ordinaria'], [264, 'GIORNI'], [306, '24,000'], [349, '65,10346'], [482, '1.562,48']]],
-  [512, [[30, '22'], [50, 'Maggiorazione turno'], [269, 'ORE'], [306, '13,340'], [352, '0,98412'], [488, '13,13']]],
+  [512, [[30, '22'], [50, 'Magg. per riposo settimanale non di domenica (10%)'], [269, 'ORE'], [306, '13,340'], [352, '0,98412'], [488, '13,13']]],
+  [505, [[30, '24'], [50, 'Magg.per festività - Pubb.Eserc. Stab.baln. (120%)'], [269, 'ORE'], [306, '13,340'], [350, '11,80947'], [485, '157,54']]],
   [498, [[30, '819'], [50, 'Rata addizionale comunale'], [237, '2026'], [419, '2,14']]],
+  [484, [[122, '1'], [136, '2'], [149, '3'], [163, '4'], [177, '5'], [191, '6'], [204, '7'], [218, '8'], [232, '9'], [245, '10'], [546, 'Totale']]],
   [470, [[30, 'Causale presenze/assenze']]],
   [450, [[39, 'Ore lavorate ordinarie'], [549, '153,41']]],
   [420, [[28, 'Contributi'], [206, 'DESCRIZIONE CONTRIBUTO'], [294, 'ALIQ.'], [320, 'IMPONIBILE'], [351, 'IMPORTO']]],
   [408, [[206, 'INPS'], [294, '9,190'], [320, '2.145,00'], [351, '197,13']]],
   [396, [[206, 'FONDO INTEGR. SALARIALE - FIS', 76], [294, '0,267'], [320, '2.145,00'], [351, '5,73']]],
-  [370, [[28, 'IRPEF'], [86, 'IMPONIBILE FISCALE'], [148, 'IRPEF LORDA']]],
-  [358, [[86, '1.791,43'], [148, '412,03']]],
+  [370, [[28, 'IRPEF'], [86, 'IMPONIBILE FISCALE'], [148, 'IRPEF LORDA'], [196, 'IRPEF + IMP. SOST.']]],
+  [358, [[86, '1.791,43'], [148, '412,03'], [196, '144,89']]],
+  [346, [[86, 'DETR. LAV.DIPENDENTE'], [125, 'U.D.']]],
+  [334, [[86, '193,57'], [125, '82,19']]],
   [320, [[468, 'TOTALE COMPETENZE']]],
   [308, [[85, 'IMPONIBILE FISCALE'], [149, 'IMPONIBILE INPS PROGR.'], [468, '2.145,48']]],
   [296, [[85, '10.559,55'], [149, '12.107,00']]],
@@ -71,12 +82,47 @@ assert.equal(jet.record.ccnl.cnel, 'H05Y');
 assert.equal(jet.record.dipendente.dataAssunzione, '01/02/2020');
 assert.equal(jet.record.voci.some(v => v.codice === '0' && v.descrizione === 'Retribuzione ordinaria'), true);
 assert.equal(jet.record.voci.some(v => /FIS/i.test(v.descrizione) && v.trattenuta === 5.73), true);
+assert.equal(jet.record.voci.some(v => v.codice === '1' && !v.descrizione), false);
+assert.equal(jet.record.voci.some(v => v.competenza === 30 && !v.descrizione), false);
 approx(jet.record.elementi.totale, 1692.69);
 approx(jet.record.orario.oreOrdinarie, 153.41);
+approx(jet.record.orario.giorniLavorati, 23);
+approx(jet.record.orario.pagaOraria, 9.84122, 0.00001);
+approx(jet.record.derivati.retribuzione.oraria, 9.84122, 0.00001);
 approx(jet.record.totali.netto, 1769);
 approx(jet.record.ratei.ferie.godutoAp, 31.7);
 approx(jet.record.tfr.fondo3112, 1436.47);
+approx(jet.record.derivati.ulterioreDetrazione, 82.19);
+approx(jet.record.derivati.ritenuteIrpef, 144.89);
 assert.equal(jet.record.meta.qualita.livello, 'alta');
+
+const fipe = Parser.trovaCcnl(jet.record, Data.CCNL_DB);
+assert.equal(fipe.id, 'pubblici-esercizi-fipe');
+assert.equal(Data.classificaVoce(jet.record.voci.find(v => v.codice === '0')).nome, 'Retribuzione ordinaria');
+assert.equal(Data.classificaVoce(jet.record.voci.find(v => v.codice === '22')).nome, 'Maggiorazione per riposo settimanale spostato');
+assert.equal(Data.classificaVoce(jet.record.voci.find(v => v.codice === '819')).nome, 'Addizionale comunale');
+assert.equal(Data.classificaVoce({ descrizione: 'INPS CONTR.CIGS L.234/2021', trattenuta: 3.25 }).nome, 'Contributo CIGS');
+assert.equal(Data.classificaVoce({ descrizione: 'Ind. turno', competenza: 50 }).nome, 'Indennità di turno');
+assert.equal(Data.classificaVoce({ descrizione: 'Permesso L.104', competenza: 80 }).nome, 'Permesso tutelato');
+assert.equal(jet.record.voci.filter(v => /identificare|senza descrizione/i.test(Data.classificaVoce(v).nome)).length, 0);
+
+const jetChecks = context.ChecksUnderTest(jet.record, fipe, []);
+const holidayCheck = jetChecks.find(finding => /Lavoro festivo/.test(finding.titolo));
+assert.equal(holidayCheck.livello, 'ok');
+assert.match(holidayCheck.titolo, /20%/);
+assert.doesNotMatch(holidayCheck.dettaglio, /SENZA maggiorazione/i);
+const holidayAccrualCheck = jetChecks.find(finding => /Maturazione ferie|Ferie esposte in ore/.test(finding.titolo));
+assert.match(holidayAccrualCheck.titolo, /ore\/anno/);
+assert.doesNotMatch(holidayAccrualCheck.titolo, /gg\/anno/);
+
+const roundedNet = Parser.quadraturaTotali({ competenze: 2145.48, trattenute: 376.45, arrotondamento: 0.36, netto: 1769 });
+assert.equal(roundedNet.ok, true);
+assert.equal(roundedNet.modalita, 'netto-arrotondato');
+const paidHolidayOnly = Parser.derivaIndice({
+  voci: [{ descrizione: "Festivita'", rifUnita: 'GIORNI', rifQta: 2, base: 65.10346, competenza: 130.21 }],
+  orario: { pagaOraria: 9.84122 },
+});
+assert.equal(paidHolidayOnly.festivo, undefined, 'una festività retribuita a giorni non è una tariffa festiva oraria');
 
 const zucchetti = Parser.parsePdfPages([
   page([

@@ -21,9 +21,18 @@ function eseguiControlli(rec, ccnl, storico = []) {
   /* --- 1. Quadratura del netto --- */
   if (t.competenze != null && t.trattenute != null && t.netto != null) {
     const arr = t.arrotondamento || 0;
-    const atteso = t.competenze - t.trattenute + arr;
-    if (near(atteso, t.netto, 0.02)) add('ok', 'Quadratura', 'Il netto quadra', `Competenze ${fmtEur(t.competenze)} − trattenute ${fmtEur(t.trattenute)} + arrotondamento ${fmtEur(arr)} = ${fmtEur(t.netto)} €.`);
-    else add('alert', 'Quadratura', 'Il netto NON quadra', `Competenze − trattenute + arrotondamento = ${fmtEur(atteso)} €, ma il netto indicato è ${fmtEur(t.netto)} €. Se i dati estratti sono corretti, chiedi spiegazioni all’ufficio paghe.`, 'netto = totale competenze − totale trattenute ± arrotondamento');
+    const quadratura = Parser.quadraturaTotali(t);
+    if (quadratura.ok && quadratura.modalita === 'netto-arrotondato') {
+      add('ok', 'Quadratura', 'Netto coerente con l’arrotondamento',
+        `Competenze ${fmtEur(t.competenze)} − trattenute ${fmtEur(t.trattenute)} = ${fmtEur(quadratura.base)} €. Il netto è ${fmtEur(t.netto)} €: lo scarto di ${fmtEur(quadratura.scarto)} € è compatibile con un netto arrotondato all’euro. Il valore “Arrotondamento” di alcuni gestionali è un saldo riportato, non sempre il movimento con segno del mese.`,
+        'netto ≈ totale competenze − totale trattenute');
+    } else if (quadratura.ok) {
+      add('ok', 'Quadratura', 'Il netto quadra', `Competenze ${fmtEur(t.competenze)} − trattenute ${fmtEur(t.trattenute)} + arrotondamento ${fmtEur(arr)} = ${fmtEur(t.netto)} €.`);
+    } else {
+      add('alert', 'Quadratura', 'Il netto NON quadra',
+        `Il risultato più vicino è ${fmtEur(quadratura.atteso)} €, ma il netto indicato è ${fmtEur(t.netto)} € (scarto ${fmtEur(quadratura.scarto)} €). Se i dati estratti sono corretti, chiedi spiegazioni all’ufficio paghe.`,
+        'netto = totale competenze − totale trattenute ± arrotondamento');
+    }
   } else add('warn', 'Quadratura', 'Totali incompleti', 'Non ho netto, competenze e trattenute insieme: completa i campi nella schermata di verifica per attivare il controllo di quadratura.');
 
   /* --- 2. Somma delle voci vs totali --- */
@@ -118,11 +127,30 @@ function eseguiControlli(rec, ccnl, storico = []) {
   }
 
   /* --- 12. Maggiorazioni festivo / domenicale --- */
-  if (d.festivo && d.retribuzione && d.retribuzione.oraria && d.festivo.oraria) {
+  if (d.festivo && d.retribuzione && d.retribuzione.oraria > 0 && d.festivo.oraria > 0) {
     const magg = (d.festivo.oraria / d.retribuzione.oraria - 1) * 100;
-    add(magg >= 5 ? 'ok' : 'warn', 'Retribuzione', `Lavoro festivo: maggiorazione ${fmtEur(magg, 0)}%`, magg >= 5
-      ? `Tariffa festiva ${fmtEur(d.festivo.oraria, 5)} vs ordinaria ${fmtEur(d.retribuzione.oraria, 5)}. Confronta la percentuale con l’articolo “lavoro festivo” del tuo CCNL.`
-      : 'Il lavoro festivo risulta pagato SENZA maggiorazione: quasi tutti i CCNL la prevedono. Verifica.', null, ['cnel']);
+    const declared = String(d.festivo.descrizione || '').match(/\((\d{2,3}(?:[,.]\d+)?)%\)/);
+    const declaredRate = declared ? Number(declared[1].replace(',', '.')) : null;
+    const declaredIncrease = declaredRate != null && declaredRate > 100 ? declaredRate - 100 : declaredRate;
+    if (magg >= 1) {
+      add('ok', 'Retribuzione', `Lavoro festivo: maggiorazione ${fmtEur(magg, 0)}%`,
+        `Confronto tra tariffe omogenee: ${fmtEur(d.festivo.oraria, 5)} €/ora festiva ÷ ${fmtEur(d.retribuzione.oraria, 5)} €/ora ordinaria − 1 = ${fmtEur(magg, 1)}%.`
+        + (declaredRate != null ? ` La dicitura “${fmtEur(declaredRate, 0)}%” indica una tariffa al ${fmtEur(declaredRate, 0)}% dell’ordinaria, cioè +${fmtEur(declaredIncrease, 0)}%.` : ''),
+        'maggiorazione = tariffa festiva ÷ tariffa ordinaria − 1', ['cnel']);
+    } else {
+      add('warn', 'Retribuzione', 'Lavoro festivo: tariffa senza maggiorazione apparente',
+        `Ho confrontato due tariffe orarie: festiva ${fmtEur(d.festivo.oraria, 5)} € e ordinaria ${fmtEur(d.retribuzione.oraria, 5)} €. La differenza è ${fmtEur(magg, 1)}%. Verifica se la maggiorazione è esposta in un’altra voce o compensata con riposo.`,
+        'maggiorazione = tariffa festiva ÷ tariffa ordinaria − 1', ['cnel']);
+    }
+  } else if (d.festivo && d.festivo.descrizione) {
+    const declared = String(d.festivo.descrizione).match(/\((\d{2,3}(?:[,.]\d+)?)%\)/);
+    if (declared) {
+      const rate = Number(declared[1].replace(',', '.'));
+      const increase = rate > 100 ? rate - 100 : rate;
+      add('info', 'Retribuzione', `Maggiorazione festiva dichiarata: +${fmtEur(increase, 0)}%`,
+        `La voce riporta “${fmtEur(rate, 0)}%”, ma manca una tariffa ordinaria oraria confrontabile: non segnalo un’anomalia automatica.`,
+        null, ['cnel']);
+    }
   }
   if (d.domenicale && d.retribuzione && d.retribuzione.oraria && d.domenicale.oraria) {
     const magg = (d.domenicale.oraria / d.retribuzione.oraria - 1) * 100;
@@ -133,10 +161,32 @@ function eseguiControlli(rec, ccnl, storico = []) {
   /* --- 13. Ferie e permessi --- */
   if (ccnl && rec.ratei && rec.ratei.ferie && mese) {
     const rate = rec.ratei.ferie.maturato / mese * 12;
-    const attesi = ccnl.ferie ? ccnl.ferie.giorni : 20;
-    if (rate >= attesi - 1.5) add('ok', 'Ferie', `Maturazione ferie in linea (~${fmtEur(rate, 1)} gg/anno)`, `CCNL ${ccnl.nome}: ${attesi} giorni/anno. Minimo di legge: 4 settimane (D.lgs. 66/2003).`, null, ['normattiva']);
-    else add('warn', 'Ferie', `Ferie che maturano poco: ~${fmtEur(rate, 1)} gg/anno`, `Il tuo CCNL ne prevede ${attesi}. Se sei part-time o assunto in corso d’anno può essere normale; altrimenti chiedi. ${ccnl.ferie && ccnl.ferie.verificato === false ? '(Valore CCNL da verificare sul testo.)' : ''}`, null, ['cnel', 'normattiva']);
-    if (rec.ratei.ferie.saldo > attesi * 1.5) add('info', 'Ferie', `Hai ${fmtEur(rec.ratei.ferie.saldo, 1)} giorni di ferie accumulati`, 'Oltre una annualità e mezza di residuo: le ferie servono a riposare e per legge 2 settimane l’anno vanno godute. Pianificale.', null, ['normattiva']);
+    const attesiGiorni = ccnl.ferie ? ccnl.ferie.giorni : 20;
+    const inOre = /^(?:ORE|ORA|H)$/i.test(rec.ratei.ferie.unita || '');
+    if (inOre) {
+      const giorniLavorati = rec.orario && rec.orario.giorniLavorati;
+      const oreLavorate = rec.orario && rec.orario.oreOrdinarie;
+      const oreGiornaliere = giorniLavorati > 0 && oreLavorate > 0 ? oreLavorate / giorniLavorati : null;
+      const atteseOre = oreGiornaliere ? attesiGiorni * oreGiornaliere : null;
+      if (atteseOre != null && Math.abs(rate - atteseOre) <= Math.max(4, atteseOre * 0.05)) {
+        add('ok', 'Ferie', `Maturazione ferie in linea (~${fmtEur(rate, 1)} ore/anno)`,
+          `${attesiGiorni} giorni contrattuali × circa ${fmtEur(oreGiornaliere, 2)} ore medie al giorno = ${fmtEur(atteseOre, 1)} ore/anno.`,
+          null, ['cnel', 'normattiva']);
+      } else {
+        add('info', 'Ferie', `Ferie esposte in ore: ~${fmtEur(rate, 1)} ore/anno`,
+          atteseOre != null
+            ? `Riferimento stimato: ${fmtEur(atteseOre, 1)} ore (${attesiGiorni} giorni contrattuali × ${fmtEur(oreGiornaliere, 2)} ore medie). Il part-time e la distribuzione dell’orario possono cambiare la conversione.`
+            : `Il cedolino espone le ferie in ore, mentre il CCNL le esprime in ${attesiGiorni} giorni: senza l’orario medio giornaliero non trasformo le unità e non segnalo un’anomalia.`,
+          null, ['cnel', 'normattiva']);
+      }
+      if (atteseOre != null && rec.ratei.ferie.saldo > atteseOre * 1.5) {
+        add('info', 'Ferie', `Hai ${fmtEur(rec.ratei.ferie.saldo, 1)} ore di ferie accumulate`, 'Il saldo supera circa una annualità e mezza: pianifica il riposo e verifica la conversione col tuo orario contrattuale.', null, ['normattiva']);
+      }
+    } else {
+      if (rate >= attesiGiorni - 1.5) add('ok', 'Ferie', `Maturazione ferie in linea (~${fmtEur(rate, 1)} gg/anno)`, `CCNL ${ccnl.nome}: ${attesiGiorni} giorni/anno. Minimo di legge: 4 settimane (D.lgs. 66/2003).`, null, ['normattiva']);
+      else add('warn', 'Ferie', `Ferie che maturano poco: ~${fmtEur(rate, 1)} gg/anno`, `Il tuo CCNL ne prevede ${attesiGiorni}. Se sei part-time o assunto in corso d’anno può essere normale; altrimenti chiedi. ${ccnl.ferie && ccnl.ferie.verificato === false ? '(Valore CCNL da verificare sul testo.)' : ''}`, null, ['cnel', 'normattiva']);
+      if (rec.ratei.ferie.saldo > attesiGiorni * 1.5) add('info', 'Ferie', `Hai ${fmtEur(rec.ratei.ferie.saldo, 1)} giorni di ferie accumulati`, 'Oltre una annualità e mezza di residuo: le ferie servono a riposare e per legge 2 settimane l’anno vanno godute. Pianificale.', null, ['normattiva']);
+    }
   }
   if (ccnl && rec.ratei && rec.ratei.permessi && mese && ccnl.rol && ccnl.rol.ore) {
     const rate = rec.ratei.permessi.maturato / mese * 12;
