@@ -1,1 +1,26 @@
+# Node
 node_modules/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# Editors
+.vscode/
+.idea/
