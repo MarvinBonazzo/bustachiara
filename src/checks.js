@@ -227,8 +227,12 @@ function eseguiControlli(rec, ccnl, storico = []) {
 
   /* --- 19. Confronto con lo storico --- */
   if (storico && storico.length && t.netto != null && rec.periodo) {
+    const company = String(rec.azienda && rec.azienda.nome || '').toUpperCase().replace(/\W+/g, ' ').trim();
+    const type = rec.documento && rec.documento.tipo || 'ordinario';
     const prev = storico
-      .filter(r => r.id !== rec.id && r.periodo && r.totali && r.totali.netto != null)
+      .filter(r => r.id !== rec.id && r.periodo && r.totali && r.totali.netto != null
+        && (r.documento && r.documento.tipo || 'ordinario') === type
+        && (!company || String(r.azienda && r.azienda.nome || '').toUpperCase().replace(/\W+/g, ' ').trim() === company))
       .sort((a, b) => (b.periodo.anno * 12 + b.periodo.mese) - (a.periodo.anno * 12 + a.periodo.mese))
       .find(r => (r.periodo.anno * 12 + r.periodo.mese) < (rec.periodo.anno * 12 + rec.periodo.mese));
     if (prev) {

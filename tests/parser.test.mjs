@@ -5,11 +5,13 @@ import vm from 'node:vm';
 const context = { console };
 vm.createContext(context);
 vm.runInContext(readFileSync(new URL('../src/cnel-index.js', import.meta.url), 'utf8'), context);
+vm.runInContext(readFileSync(new URL('../src/parser-sectors.js', import.meta.url), 'utf8') + '\nthis.SectorsUnderTest = { parserSectorForText, parserSectorVoiceHints };', context);
 vm.runInContext(readFileSync(new URL('../src/parser.js', import.meta.url), 'utf8') + '\nthis.ParserUnderTest = Parser;', context);
-vm.runInContext(readFileSync(new URL('../src/data.js', import.meta.url), 'utf8') + '\nthis.DataUnderTest = { CCNL_DB, classificaVoce };', context);
+vm.runInContext(readFileSync(new URL('../src/data.js', import.meta.url), 'utf8') + '\nthis.DataUnderTest = { CCNL_DB, classificaVoce, semanticVoiceMatch, semanticSimilarity };', context);
 vm.runInContext(readFileSync(new URL('../src/checks.js', import.meta.url), 'utf8') + '\nthis.ChecksUnderTest = eseguiControlli;', context);
 const Parser = context.ParserUnderTest;
 const Data = context.DataUnderTest;
+const Sectors = context.SectorsUnderTest;
 
 function page(rows) {
   return rows.flatMap(([y, cells]) => cells.map(([x, str, width]) => ({
@@ -81,6 +83,8 @@ const jet = Parser.parsePdfPages([page([
 ])]);
 
 assert.equal(jet.record.meta.software, 'Jet HR');
+assert.equal(jet.record.meta.settore, 'privato-lul');
+assert.equal(jet.record.documento.tipo, 'ordinario');
 assert.equal(jet.record.dipendente.livello, '4');
 assert.equal(jet.record.dipendente.qualifica, 'OPERAI');
 assert.equal(jet.record.ccnl.cnel, 'H05Y');
@@ -100,6 +104,9 @@ approx(jet.record.tfr.fondo3112, 1436.47);
 approx(jet.record.derivati.ulterioreDetrazione, 82.19);
 approx(jet.record.derivati.ritenuteIrpef, 144.89);
 assert.equal(jet.record.meta.qualita.livello, 'alta');
+assert.equal(jet.record.voci.find(v => v.codice === '0').meta.visual.page, 0);
+assert.ok(jet.record.voci.find(v => v.codice === '0').meta.visual.bbox.w > 0);
+assert.ok(jet.record.meta.reconciliation.score >= 70, JSON.stringify({ reconciliation: jet.record.meta.reconciliation, voices: jet.record.voci.map(v => ({ d:v.descrizione,b:v.base,q:v.rifQta,u:v.rifUnita,t:v.trattenuta,c:v.competenza })) }));
 
 const fipe = Parser.trovaCcnl(jet.record, Data.CCNL_DB);
 assert.equal(fipe.id, 'pubblici-esercizi-fipe');
@@ -109,6 +116,7 @@ assert.equal(Data.classificaVoce(jet.record.voci.find(v => v.codice === '819')).
 assert.equal(Data.classificaVoce({ descrizione: 'INPS CONTR.CIGS L.234/2021', trattenuta: 3.25 }).nome, 'Contributo CIGS');
 assert.equal(Data.classificaVoce({ descrizione: 'Ind. turno', competenza: 50 }).nome, 'Indennità di turno');
 assert.equal(Data.classificaVoce({ descrizione: 'Permesso L.104', competenza: 80 }).nome, 'Permesso tutelato');
+assert.equal(Data.classificaVoce({ descrizione: 'Retnbuzione ordmana', competenza: 1500 }).nome, 'Retribuzione ordinaria', JSON.stringify({ match: Data.semanticVoiceMatch('Retnbuzione ordmana'), score: Data.semanticSimilarity('Retnbuzione ordmana', 'retribuzione ordinaria') }));
 assert.equal(jet.record.voci.filter(v => /identificare|senza descrizione/i.test(Data.classificaVoce(v).nome)).length, 0);
 
 const jetChecks = context.ChecksUnderTest(jet.record, fipe, []);
@@ -216,4 +224,24 @@ assert.equal(officialOnly.id, 'cnel-t271');
 assert.equal(officialOnly.officialOnly, true);
 assert.match(officialOnly.nome, /FISM|infanzia|scuol/i);
 
-console.log('OK — parser multi-layout: privato, Jet HR, Zucchetti, NoiPA, domestico, edilizia e OCR generico');
+const ccnlSuggestions = Parser.suggerisciCcnl({ ccnl: { descrizione: 'Pubblici esercizi e stabilimenti balneari' }, meta: { settore: 'privato-lul' } }, Data.CCNL_DB);
+assert.equal(ccnlSuggestions[0].contract.id, 'pubblici-esercizi-fipe');
+assert.match(ccnlSuggestions[0].reasons.join(' '), /denominazione|parole/i);
+
+const thirteenth = Parser.parseFreeText('CEDOLINO TREDICESIMA MENSILITA\nDICEMBRE 2026\nTOTALE COMPETENZE 1.500,00\nTOTALE TRATTENUTE 300,00\nNETTO 1.200,00');
+assert.equal(thirteenth.record.documento.tipo, 'tredicesima');
+
+const sectorSamples = {
+  'pubblico-noipa': 'NoiPA cedolino unico — competenze fisse',
+  domestico: 'Lavoro domestico COLF — indennità vitto e alloggio',
+  edilizia: 'Cassa Edile — accantonamento GNF',
+  agricoltura: 'Operaio agricolo — giornate agricole',
+  marittimo: 'Gente di mare — giorni imbarco e indennità di navigazione',
+  'spettacolo-sportivo': 'Fondo pensione lavoratori spettacolo ex ENPALS',
+  dirigenti: 'Qualifica dirigente — PREVINDAI e FASDAC',
+  'cessazione-conguaglio': 'Fine rapporto — data cessazione e conguaglio fiscale',
+};
+for (const [sector, sample] of Object.entries(sectorSamples)) assert.equal(Sectors.parserSectorForText(sample).id, sector);
+assert.ok(Sectors.parserSectorVoiceHints().length >= 30);
+
+console.log('OK — parser multi-layout, riconciliazione, CCNL, OCR e 9 moduli di settore');

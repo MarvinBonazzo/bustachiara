@@ -30,6 +30,15 @@ const MESI_NOMI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giug
 function periodoLabel(p) { return p ? (MESI_NOMI[p.mese] ? `${MESI_NOMI[p.mese]} ${p.anno}` : `${p.mese}/${p.anno}`) : '—'; }
 function periodoKey(p) { return p ? p.anno * 12 + p.mese : 0; }
 function primaFrase(t) { const i = (t || '').indexOf('. '); return i > 20 ? t.slice(0, i + 1) : (t || ''); }
+const TIPO_CEDOLINO = {
+  ordinario: 'Ordinario', tredicesima: 'Tredicesima', quattordicesima: 'Quattordicesima',
+  conguaglio: 'Conguaglio', cessazione: 'Cessazione', arretrati: 'Arretrati',
+  premio: 'Premio', rettifica: 'Rettifica', altro: 'Altro',
+};
+function tipoCedolino(record) { return record && record.documento && record.documento.tipo || 'ordinario'; }
+function tipoCedolinoLabel(record) { return TIPO_CEDOLINO[tipoCedolino(record)] || 'Altro'; }
+function employerKey(record) { return aliasKey(record && record.azienda && record.azienda.nome || ''); }
+function recordIdentityKey(record) { return [periodoKey(record.periodo), employerKey(record), tipoCedolino(record)].join('|'); }
 
 /* ---------- archivio locale ---------- */
 const STORE_KEY = 'bustachiara_v1';
@@ -43,6 +52,7 @@ const Store = {
         this.data.prefs = Object.assign({ modo: 'dettagliato' }, d.prefs);
         this.data.voiceAliases = Array.isArray(d.voiceAliases) ? d.voiceAliases : [];
         this.data.records = this.data.records.map(record => {
+          record.documento = record.documento || { tipo: 'ordinario' };
           Parser.ripulisciRecord(record);
           if (!record.ccnlId) {
             const contract = Parser.trovaCcnl(record, CCNL_DB);
@@ -63,7 +73,8 @@ function ccnlById(id) {
   const match = String(id || '').match(/^cnel-(.+)$/);
   return match ? Parser.cnelContractByCode(match[1]) : null;
 }
-function recSorted() { return [...Store.data.records].sort((a, b) => periodoKey(a.periodo) - periodoKey(b.periodo)); }
+function recSorted() { return [...Store.data.records].sort((a, b) => periodoKey(a.periodo) - periodoKey(b.periodo)
+  || employerKey(a).localeCompare(employerKey(b)) || tipoCedolino(a).localeCompare(tipoCedolino(b))); }
 
 function aliasKey(value) {
   return Parser.normalizzaTesto(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
@@ -212,10 +223,11 @@ function renderImporta() {
   ${conNetto.length >= 2 ? `<div class="card"><h2>Andamento del netto</h2>${sparkSVG(recs)}</div>` : ''}
   <div class="card"><h2>Le tue buste</h2>
     ${[...recs].reverse().map((r, idx, arr) => {
-      const prev = arr[idx + 1];
+      const prev = [...recs].reverse().find(candidate => periodoKey(candidate.periodo) < periodoKey(r.periodo)
+        && employerKey(candidate) === employerKey(r) && tipoCedolino(candidate) === tipoCedolino(r));
       const delta = prev && prev.totali.netto != null && r.totali.netto != null ? r.totali.netto - prev.totali.netto : null;
       return `<div class="rec-card" data-id="${esc(r.id)}">
-        <div><div class="per">${esc(periodoLabel(r.periodo))}</div><div class="muted small">${esc(r.azienda.nome || '')}</div></div>
+        <div><div class="per">${esc(periodoLabel(r.periodo))} <span class="badge dato">${esc(tipoCedolinoLabel(r))}</span></div><div class="muted small">${esc(r.azienda.nome || '')}</div></div>
         <div style="text-align:right"><div class="netto">${fmtEur(r.totali.netto)} €</div>
         ${delta != null ? `<div class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : '−'} ${fmtEur(Math.abs(delta))} € vs mese prec.</div>` : ''}</div>
       </div>`;
@@ -263,7 +275,7 @@ function renderImporta() {
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
   fi.addEventListener('change', () => { if (fi.files[0]) handleFile(fi.files[0]); fi.value = ''; });
   $('#btn-manual').addEventListener('click', () => startVerifica(emptyRecord(), ['Inserimento manuale: compila i campi che hai, non serve riempirli tutti.']));
-  $('#btn-demo').addEventListener('click', () => startVerifica(demoRecord(), ['Busta di ESEMPIO (dati inventati ma coerenti): usala per esplorare l’app.']));
+  $('#btn-demo').addEventListener('click', () => startVerifica(demoRecord(), ['Busta di ESEMPIO (dati inventati ma coerenti): usala per esplorare l’app.'], [demoPreviewDataUrl()]));
   $('#view-importa').onclick = (e) => {
     const c = e.target.closest('.rec-card'); if (!c) return;
     renderDettaglio(c.dataset.id); showView('dettaglio');
@@ -296,34 +308,54 @@ async function handleFile(file) {
       };
       const pdf = await task.promise;
       const pages = [];
+      const pageSizes = [];
+      const pdfPages = [];
       let chars = 0;
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
+        pdfPages.push(page);
+        const viewport = page.getViewport({ scale: 1 });
+        pageSizes.push({ width: viewport.width, height: viewport.height });
         const tc = await page.getTextContent();
-        const items = tc.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width }));
+        const items = tc.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: Math.abs(it.height || it.transform[3] || 10) }));
         chars += items.reduce((s, it) => s + it.str.length, 0);
         pages.push(items);
         importStatus(`Leggo il PDF… pagina ${p}/${pdf.numPages}`, 0.1 + 0.5 * p / pdf.numPages);
       }
       if (chars > 150) {
-        const { record, warnings } = Parser.parsePdfPages(pages);
+        const weakPages = pages.map((items, index) => pageNeedsOcr(items) ? index : -1).filter(index => index >= 0);
+        const previews = [];
+        for (let p = 0; p < pdfPages.length; p++) {
+          const weak = weakPages.includes(p);
+          const rendered = await renderPage(pdfPages[p], weak ? 2.6 : 1.35);
+          if (weak) {
+            importStatus(`Pagina ${p + 1}: integro solo le zone senza testo…`, .55 + .25 * (p + 1) / pdfPages.length);
+            const prepared = prepareOcrCanvas(rendered);
+            const data = await ocrDataMulti(prepared, (m, f) => importStatus(`OCR selettivo pagina ${p + 1}: ${m}`, .55 + .25 * ((p + (f || 0)) / pdfPages.length)));
+            const ocrItems = ocrToItems(data, prepared);
+            pages[p] = mergePageItems(pages[p], ocrItems);
+          }
+          previews.push(canvasPreviewDataUrl(weak ? prepareOcrCanvas(rendered) : rendered));
+        }
+        const { record, warnings } = Parser.parsePdfPages(pages, { pageSizes });
         record.meta.fileName = file.name;
+        if (weakPages.length) warnings.unshift(`OCR selettivo applicato a ${weakPages.length} pagina/e con testo digitale insufficiente.`);
         importStatus('Fatto', 1);
-        startVerifica(record, warnings);
+        startVerifica(record, warnings, previews);
       } else {
         importStatus('PDF senza testo (scansione): avvio la lettura ottica locale…', 0.15);
         const canvases = [];
         for (let p = 1; p <= pdf.numPages; p++) canvases.push(await renderPage(await pdf.getPage(p), 2.6));
-        const { record, warnings } = await parseDaOcr(canvases, (m, f) => importStatus('Lettura ottica: ' + m, 0.15 + 0.8 * (f || 0)));
+        const { record, warnings, previewPages } = await parseDaOcr(canvases, (m, f) => importStatus('Lettura ottica: ' + m, 0.15 + 0.8 * (f || 0)));
         record.meta.fileName = file.name;
-        startVerifica(record, warnings);
+        startVerifica(record, warnings, previewPages);
       }
     } else if (/^image\//.test(file.type)) {
       importStatus('Preparo l’immagine…', 0.1);
       const canvas = await imageToCanvas(file);
-      const { record, warnings } = await parseDaOcr([canvas], (m, f) => importStatus('Lettura ottica: ' + m, 0.1 + 0.85 * (f || 0)));
+      const { record, warnings, previewPages } = await parseDaOcr([canvas], (m, f) => importStatus('Lettura ottica: ' + m, 0.1 + 0.85 * (f || 0)));
       record.meta.fileName = file.name;
-      startVerifica(record, warnings);
+      startVerifica(record, warnings, previewPages);
     } else {
       toast('Formato non supportato: usa PDF o immagine.');
     }
@@ -332,6 +364,36 @@ async function handleFile(file) {
     importStatus('Errore: ' + err.message, 0);
     toast('Non sono riuscito a leggere il file: prova con l’inserimento manuale.');
   }
+}
+function pageNeedsOcr(items) {
+  const meaningful = (items || []).filter(item => /[A-Za-zÀ-ù0-9]{2}/.test(item.str || ''));
+  const chars = meaningful.reduce((sum, item) => sum + String(item.str || '').trim().length, 0);
+  const numeric = meaningful.filter(item => /\d/.test(item.str || '')).length;
+  const labels = meaningful.filter(item => /NETTO|TOTALE|RETRIBUZ|TRATTEN|COMPETEN|IRPEF|INPS|TFR/i.test(item.str || '')).length;
+  return chars < 95 || meaningful.length < 16 || numeric < 4 || labels < 1;
+}
+function mergePageItems(nativeItems, ocrItems) {
+  const result = [...(nativeItems || [])];
+  for (const item of ocrItems || []) {
+    const key = aliasKey(item.str);
+    if (!key) continue;
+    const duplicate = result.some(existing => aliasKey(existing.str) === key
+      && Math.abs(Number(existing.x || 0) - Number(item.x || 0)) < 18
+      && Math.abs(Number(existing.y || 0) - Number(item.y || 0)) < 12);
+    if (!duplicate) result.push(item);
+  }
+  return result;
+}
+function canvasPreviewDataUrl(source) {
+  const maxWidth = 1200;
+  const scale = Math.min(1, maxWidth / Math.max(1, source.width));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(source.width * scale));
+  canvas.height = Math.max(1, Math.round(source.height * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', .86);
 }
 async function renderPage(page, scale) {
   const vp = page.getViewport({ scale });
@@ -443,6 +505,86 @@ function rotateCanvas(source, degrees) {
   return canvas;
 }
 
+function projectionScore(source, axis) {
+  const scale = Math.min(1, 520 / Math.max(source.width, source.height, 1));
+  const width = Math.max(1, Math.round(source.width * scale)), height = Math.max(1, Math.round(source.height * scale));
+  const sample = document.createElement('canvas'); sample.width = width; sample.height = height;
+  const ctx = sample.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source, 0, 0, width, height);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const length = axis === 'row' ? height : width;
+  const counts = new Float64Array(length);
+  for (let y = 0; y < height; y += 2) for (let x = 0; x < width; x += 2) {
+    const i = (y * width + x) * 4;
+    const gray = data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114;
+    if (gray < 175) counts[axis === 'row' ? y : x]++;
+  }
+  const mean = counts.reduce((sum, value) => sum + value, 0) / Math.max(1, counts.length);
+  const variance = counts.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, counts.length);
+  return Math.sqrt(variance) / Math.max(1, mean);
+}
+
+function autoOrientCanvas(source) {
+  const row = projectionScore(source, 'row'), column = projectionScore(source, 'column');
+  if (column > row * 1.28) {
+    const rotated = rotateCanvas(source, 90);
+    rotated._ocrCorrections = ['orientamento 90°'];
+    return rotated;
+  }
+  return source;
+}
+
+/* Correzione prospettica conservativa per foto di un foglio chiaro su sfondo
+   più scuro. Se il bordo del foglio non è sufficientemente evidente non tocca
+   l'immagine, evitando deformazioni sui PDF e sugli screenshot. */
+function perspectiveCorrectCanvas(source) {
+  const scale = Math.min(1, 720 / Math.max(source.width, source.height, 1));
+  const width = Math.max(1, Math.round(source.width * scale)), height = Math.max(1, Math.round(source.height * scale));
+  const sample = document.createElement('canvas'); sample.width = width; sample.height = height;
+  const ctx = sample.getContext('2d', { willReadFrequently: true }); ctx.drawImage(source, 0, 0, width, height);
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const grayAt = (x, y) => { const i = (Math.max(0, Math.min(height - 1, y)) * width + Math.max(0, Math.min(width - 1, x))) * 4; return data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114; };
+  let edge = 0, edgeCount = 0;
+  for (let x = 0; x < width; x += 8) { edge += grayAt(x, 2) + grayAt(x, height - 3); edgeCount += 2; }
+  for (let y = 0; y < height; y += 8) { edge += grayAt(2, y) + grayAt(width - 3, y); edgeCount += 2; }
+  edge /= Math.max(1, edgeCount);
+  let center = 0, centerCount = 0;
+  for (let y = Math.round(height * .25); y < height * .75; y += 12) for (let x = Math.round(width * .25); x < width * .75; x += 12) { center += grayAt(x, y); centerCount++; }
+  center /= Math.max(1, centerCount);
+  if (center - edge < 22 || center < 185) return source;
+  const threshold = Math.min(238, edge + Math.max(22, (center - edge) * .45));
+  const spans = [];
+  for (let y = 0; y < height; y += 3) {
+    let left = -1, right = -1;
+    for (let x = 0; x < width; x += 2) if (grayAt(x, y) >= threshold) { left = x; break; }
+    for (let x = width - 1; x >= 0; x -= 2) if (grayAt(x, y) >= threshold) { right = x; break; }
+    if (left >= 0 && right - left >= width * .52) spans.push({ y, left, right });
+  }
+  if (spans.length < height / 12) return source;
+  const topY = spans[0].y, bottomY = spans[spans.length - 1].y;
+  const bandAverage = target => {
+    const band = spans.filter(span => Math.abs(span.y - target) <= Math.max(9, height * .035));
+    if (!band.length) return null;
+    return { left: band.reduce((sum, span) => sum + span.left, 0) / band.length, right: band.reduce((sum, span) => sum + span.right, 0) / band.length };
+  };
+  const top = bandAverage(topY + (bottomY - topY) * .12), bottom = bandAverage(topY + (bottomY - topY) * .88);
+  if (!top || !bottom) return source;
+  const topWidth = top.right - top.left, bottomWidth = bottom.right - bottom.left;
+  const distortion = Math.abs(topWidth - bottomWidth) / Math.max(topWidth, bottomWidth);
+  if (distortion < .035 || distortion > .32) return source;
+  const y0 = Math.max(0, Math.round(topY / scale)), y1 = Math.min(source.height, Math.round(bottomY / scale));
+  const targetWidth = Math.round(Math.max(topWidth, bottomWidth) / scale);
+  const output = document.createElement('canvas'); output.width = targetWidth; output.height = Math.max(1, y1 - y0);
+  const out = output.getContext('2d'); out.fillStyle = '#fff'; out.fillRect(0, 0, output.width, output.height);
+  for (let y = 0; y < output.height; y += 2) {
+    const t = y / Math.max(1, output.height - 1);
+    const left = (top.left + (bottom.left - top.left) * t) / scale;
+    const right = (top.right + (bottom.right - top.right) * t) / scale;
+    out.drawImage(source, left, y0 + y, Math.max(1, right - left), Math.min(2, output.height - y), 0, y, output.width, Math.min(2, output.height - y));
+  }
+  output._ocrCorrections = [...(source._ocrCorrections || []), 'prospettiva del foglio'];
+  return output;
+}
+
 function localThresholdCanvas(source) {
   const canvas = cloneCanvas(source);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -469,8 +611,12 @@ function localThresholdCanvas(source) {
 }
 
 function prepareOcrCanvas(source) {
-  const trimmed = trimLightMargins(source);
-  return trimLightMargins(rotateCanvas(trimmed, estimateSmallSkew(trimmed)));
+  const oriented = autoOrientCanvas(source);
+  const perspective = perspectiveCorrectCanvas(oriented);
+  const trimmed = trimLightMargins(perspective);
+  const result = trimLightMargins(rotateCanvas(trimmed, estimateSmallSkew(trimmed)));
+  result._ocrCorrections = [...(perspective._ocrCorrections || []), ...(result === trimmed ? [] : ['inclinazione'])];
+  return result;
 }
 
 /* ---------- OCR (tesseract.js inglobato, zero rete) ---------- */
@@ -635,9 +781,16 @@ function unisciEstrazioni(a, b) {
 /* Pipeline completa: una o più immagini → record da verificare. */
 async function parseDaOcr(canvases, status) {
   const pagineItems = [];
+  const pageSizes = [];
+  const previewPages = [];
+  const corrections = [];
   let testo = '';
   for (let i = 0; i < canvases.length; i++) {
     const prepared = prepareOcrCanvas(canvases[i]);
+    previewPages.push(canvasPreviewDataUrl(prepared));
+    const scale = 600 / Math.max(prepared.width, 1);
+    pageSizes.push({ width: 600, height: prepared.height * scale });
+    if (prepared._ocrCorrections && prepared._ocrCorrections.length) corrections.push(`pagina ${i + 1}: ${prepared._ocrCorrections.join(', ')}`);
     const data = await ocrDataMulti(prepared, (m, f) => status && status(`${canvases.length > 1 ? 'pagina ' + (i + 1) + '/' + canvases.length + ': ' : ''}${m}`, ((i + (f || 0)) / canvases.length)));
     const items = ocrToItems(data, prepared);
     pagineItems.push(items);
@@ -651,11 +804,13 @@ async function parseDaOcr(canvases, status) {
     testo += [...perRiga.entries()].sort((a, b) => b[0] - a[0])
       .map(([, cs]) => cs.sort((a, b) => a.x - b.x).map(c => c.str).join(' ')).join('\n') + '\n';
   }
-  const daCoordinate = Parser.parsePdfPages(pagineItems, { source: 'ocr' });
+  const daCoordinate = Parser.parsePdfPages(pagineItems, { source: 'ocr', pageSizes });
   const daTesto = Parser.parseFreeText(testo);
   const esito = unisciEstrazioni(daCoordinate, daTesto);
   esito.warnings = ['Lettura ottica (OCR): i numeri possono contenere errori di lettura, controlla TUTTI i campi prima di salvare.',
+    ...(corrections.length ? [`Correzioni automatiche immagine — ${corrections.join('; ')}.`] : []),
     ...esito.warnings.filter(w => !/precisione limitata/.test(w))];
+  esito.previewPages = previewPages;
   return esito;
 }
 
@@ -664,9 +819,9 @@ async function parseDaOcr(canvases, status) {
    ============================================================ */
 function emptyRecord() {
   const now = new Date();
-  return { periodo: { mese: now.getMonth() + 1, anno: now.getFullYear() }, azienda: {}, dipendente: {}, ccnl: {}, elementi: { altri: [] }, orario: {}, voci: [], tfr: {}, progressivi: {}, ratei: {}, totali: {}, meta: { fonte: 'manuale' } };
+  return { documento: { tipo: 'ordinario' }, periodo: { mese: now.getMonth() + 1, anno: now.getFullYear() }, azienda: {}, dipendente: {}, ccnl: {}, elementi: { altri: [] }, orario: {}, voci: [], tfr: {}, progressivi: {}, ratei: {}, totali: {}, meta: { fonte: 'manuale', software: 'inserimento manuale', settore: 'privato-lul', fields: {}, candidates: {}, reconciliation: {}, pageSizes: [] } };
 }
-function startVerifica(record, warnings) {
+function startVerifica(record, warnings, previewPages = []) {
   if (!record.id) record.id = uid();
   applicaAliasLocali(record);
   Parser.ripulisciRecord(record);
@@ -674,7 +829,7 @@ function startVerifica(record, warnings) {
   record.meta.qualita = Parser.valutaQualita(record);
   const hit = Parser.trovaCcnl(record, CCNL_DB, Store.data.customCcnl.map(reviveCustom));
   if (hit && !record.ccnlId) record.ccnlId = hit.id;
-  draft = { record, warnings: warnings || [] };
+  draft = { record, warnings: warnings || [], previewPages: previewPages || [], activeSource: null };
   renderVerifica();
   showView('verifica');
 }
@@ -705,6 +860,39 @@ const FIELD_GROUPS = [
 ];
 const NUM_FIELDS = new Set(FIELD_GROUPS.flatMap(g => g.fields.map(f => f[0])).filter(p => !/nome|cf|qualifica|dataAssunzione|livello/.test(p)));
 
+function sourceButton(path, label = 'Mostra nel documento') {
+  const meta = draft && draft.record && draft.record.meta && draft.record.meta.fields && draft.record.meta.fields[path];
+  if (!meta || !meta.bbox || meta.page == null || !(draft.previewPages || [])[meta.page]) return '';
+  return `<button type="button" class="source-btn" data-source-path="${esc(path)}" title="${esc(label)}" aria-label="${esc(label)}">⌖</button>`;
+}
+function sourceViewerHtml() {
+  if (!draft.previewPages || !draft.previewPages.length) return '';
+  return `<aside class="document-viewer" aria-label="Documento originale">
+    <div class="document-viewer-head"><div><b>Documento</b><p>Seleziona un campo per vedere da dove arriva.</p></div><span class="privacy-local">Solo in memoria</span></div>
+    <div class="document-pages">${draft.previewPages.map((src, page) => `<div class="document-page" data-page="${page}">
+      <div class="document-sheet"><img src="${src}" alt="Pagina ${page + 1} del documento"><span class="source-highlight" hidden></span></div>
+      <span class="page-number">Pagina ${page + 1}</span>
+    </div>`).join('')}</div>
+  </aside>`;
+}
+function showSourceEvidence(evidence) {
+  if (!evidence || evidence.page == null || !evidence.bbox) return;
+  const page = $(`.document-page[data-page="${evidence.page}"]`, $('#view-verifica'));
+  const size = draft.record.meta && draft.record.meta.pageSizes && draft.record.meta.pageSizes[evidence.page];
+  if (!page || !size || !size.width || !size.height) return;
+  $$('.source-highlight', $('#view-verifica')).forEach(item => { item.hidden = true; });
+  const highlight = $('.source-highlight', page);
+  const box = evidence.bbox;
+  highlight.style.left = `${Math.max(0, box.x / size.width * 100)}%`;
+  highlight.style.width = `${Math.min(100, Math.max(1.8, box.w / size.width * 100))}%`;
+  highlight.style.top = `${Math.max(0, (size.height - box.y - box.h) / size.height * 100)}%`;
+  highlight.style.height = `${Math.min(100, Math.max(1.2, box.h / size.height * 100))}%`;
+  highlight.hidden = false;
+  page.classList.add('source-active');
+  setTimeout(() => page.classList.remove('source-active'), 900);
+  page.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function renderVerifica() {
   const r = draft.record;
   const quality = r.meta && r.meta.qualita ? r.meta.qualita : Parser.valutaQualita(r);
@@ -712,8 +900,12 @@ function renderVerifica() {
   const qualityLabel = quality.livello === 'alta' ? 'Buona' : (quality.livello === 'media' ? 'Parziale' : 'Bassa');
   const software = r.meta && r.meta.software && !/non identificato|sconosciuto/i.test(r.meta.software) ? ` · formato ${esc(r.meta.software)}` : '';
   const knownContracts = allCcnl();
+  const ccnlSuggestions = Parser.suggerisciCcnl(r, CCNL_DB, Store.data.customCcnl.map(reviveCustom), 3);
+  const suggestedContracts = ccnlSuggestions.map(item => item.contract).filter(Boolean);
   const selectedOfficial = r.ccnlId && !knownContracts.some(c => c.id === r.ccnlId) ? ccnlById(r.ccnlId) : null;
-  const ccnlOpts = [...(selectedOfficial ? [selectedOfficial] : []), ...knownContracts]
+  const optionContracts = [...(selectedOfficial ? [selectedOfficial] : []), ...suggestedContracts, ...knownContracts]
+    .filter((contract, index, list) => contract && list.findIndex(item => item.id === contract.id) === index);
+  const ccnlOpts = optionContracts
     .map(c => `<option value="${esc(c.id)}" ${r.ccnlId === c.id ? 'selected' : ''}>${esc(c.nome)}${c.officialOnly ? ' — indice ufficiale CNEL' : ''}</option>`).join('');
   const confidenceBadge = path => {
     const meta = r.meta && r.meta.fields && r.meta.fields[path];
@@ -722,7 +914,9 @@ function renderVerifica() {
     return ` <span class="field-confidence ${meta.confidence < 0.55 ? 'low' : ''}" title="${esc(meta.method || 'estrazione euristica')}">${label}</span>`;
   };
   $('#view-verifica').innerHTML = `
-  <div class="card">
+  <div class="verify-layout ${draft.previewPages && draft.previewPages.length ? 'with-document' : ''}">
+  ${sourceViewerHtml()}
+  <div class="card verify-form">
     <h2>Verifica i dati estratti</h2>
     <div class="finding ${qualityClass}"><span class="lvchip ${qualityClass}">${qualityLabel}</span><div>
       <p><b>Affidabilità stimata ${quality.score}/100</b>${software} · ${r.voci.length} voci riconosciute.</p>
@@ -730,15 +924,22 @@ function renderVerifica() {
     </div></div>
     ${draft.warnings.map(w => `<div class="finding warn"><span class="lvchip warn">Nota</span><div><p>${esc(w)}</p></div></div>`).join('')}
     <p class="muted">Correggi quello che non torna: i controlli valgono quanto i dati che confermi. I numeri accettano sia 1.234,56 che 1234.56.</p>
+    <h3>Documento</h3>
+    <div class="grid">
+      <label class="field">Tipo cedolino<select id="f-doc-type">${Object.entries(TIPO_CEDOLINO).map(([value, label]) => `<option value="${value}" ${tipoCedolino(r) === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+      <label class="field">Formato rilevato<input value="${esc((r.meta && r.meta.software) || 'non identificato')}" readonly></label>
+      <label class="field">Famiglia<input value="${esc((r.meta && r.meta.settore) || 'privato-lul')}" readonly></label>
+    </div>
     <h3>Contratto (CCNL) ${iBtn('ccnl')}</h3>
     <div class="grid">
       <label class="field">CCNL applicato<select id="f-ccnl"><option value="">— non identificato —</option>${ccnlOpts}</select></label>
-      <label class="field">Codice CNEL (dal cedolino)${confidenceBadge('ccnl.cnel')}<input data-k="ccnl.cnel" value="${esc(r.ccnl.cnel || '')}" placeholder="es. H052"></label>
-      <label class="field">Descrizione contratto${confidenceBadge('ccnl.descrizione')}<input data-k="ccnl.descrizione" value="${esc(r.ccnl.descrizione || '')}"></label>
+      <label class="field">Codice CNEL (dal cedolino)${confidenceBadge('ccnl.cnel')}${sourceButton('ccnl.cnel')}<input data-k="ccnl.cnel" value="${esc(r.ccnl.cnel || '')}" placeholder="es. H052"></label>
+      <label class="field">Descrizione contratto${confidenceBadge('ccnl.descrizione')}${sourceButton('ccnl.descrizione')}<input data-k="ccnl.descrizione" value="${esc(r.ccnl.descrizione || '')}"></label>
     </div>
+    ${ccnlSuggestions.length ? `<div class="ccnl-suggestions"><p class="muted small"><b>Contratti più probabili</b> — scegli solo se la descrizione coincide col cedolino.</p>${ccnlSuggestions.map(item => `<button type="button" class="ccnl-suggestion ${r.ccnlId === item.contract.id ? 'selected' : ''}" data-ccnl-suggest="${esc(item.contract.id)}"><span>${esc(item.contract.nome)}</span><small>${Math.round(item.score * 100)}% · ${esc(item.reasons.join('; '))}</small></button>`).join('')}</div>` : ''}
     ${FIELD_GROUPS.map(g => `<h3>${esc(g.titolo)} ${g.info ? iBtn(g.info) : ''}</h3><div class="grid">${g.fields.map(([k, lab]) => {
       const v = getPath(r, k);
-      return `<label class="field">${esc(lab)}${confidenceBadge(k)}<input data-k="${k}" value="${v == null ? '' : esc(NUM_FIELDS.has(k) && typeof v === 'number' ? fmtEur(v, /mese|anno$/.test(k) && k.startsWith('periodo') ? 0 : 2) : v)}"></label>`;
+      return `<label class="field">${esc(lab)}${confidenceBadge(k)}${sourceButton(k)}<input data-k="${k}" value="${v == null ? '' : esc(NUM_FIELDS.has(k) && typeof v === 'number' ? fmtEur(v, /mese|anno$/.test(k) && k.startsWith('periodo') ? 0 : 2) : v)}"></label>`;
     }).join('')}</div>`).join('')}
     <h3>Voci del cedolino <span class="muted small">(tocca × per eliminare una riga letta male)</span></h3>
     <div class="tablewrap"><table class="voci" id="voci-edit">
@@ -753,10 +954,47 @@ function renderVerifica() {
       <button class="primary" id="btn-salva">Salva e analizza</button>
       <button class="ghost" id="btn-annulla">Annulla</button>
     </div>
-  </div>`;
+  </div></div>`;
   renderVociEdit();
-  $('#view-verifica').addEventListener('input', onVerificaInput);
+  const verifyView = $('#view-verifica');
+  verifyView.addEventListener('input', onVerificaInput);
   $('#f-ccnl').addEventListener('change', e => { draft.record.ccnlId = e.target.value || null; });
+  $('#f-doc-type').addEventListener('change', e => { draft.record.documento.tipo = e.target.value || 'ordinario'; });
+  verifyView.addEventListener('click', e => {
+    const source = e.target.closest('.source-btn');
+    if (source) {
+      const path = source.dataset.sourcePath;
+      const voiceIndex = source.dataset.sourceVoice;
+      const evidence = path != null
+        ? draft.record.meta.fields[path]
+        : (voiceIndex != null && draft.record.voci[+voiceIndex] && draft.record.voci[+voiceIndex].meta && draft.record.voci[+voiceIndex].meta.visual);
+      showSourceEvidence(evidence); return;
+    }
+    const suggestion = e.target.closest('.ccnl-suggestion');
+    if (suggestion) {
+      const contract = optionContracts.find(item => item.id === suggestion.dataset.ccnlSuggest);
+      if (!contract) return;
+      draft.record.ccnlId = contract.id;
+      $('#f-ccnl').value = contract.id;
+      if (!draft.record.ccnl.cnel && contract.cnel && contract.cnel.length === 1) {
+        draft.record.ccnl.cnel = contract.cnel[0];
+        const input = $('[data-k="ccnl.cnel"]'); if (input) input.value = contract.cnel[0];
+      }
+      $$('.ccnl-suggestion', verifyView).forEach(button => button.classList.toggle('selected', button === suggestion));
+      toast('Contratto selezionato: confermalo confrontando il documento.');
+    }
+    const alternative = e.target.closest('[data-total-alternative]');
+    if (alternative) {
+      const item = (draft.record.meta.reconciliation.alternatives || [])[+alternative.dataset.totalAlternative];
+      if (!item) return;
+      for (const key of ['competenze', 'trattenute', 'arrotondamento', 'netto']) if (item[key] != null) draft.record.totali[key] = item[key];
+      renderVerifica();
+    }
+  });
+  verifyView.addEventListener('focusin', e => {
+    const path = e.target && e.target.dataset && e.target.dataset.k;
+    if (path && draft.record.meta.fields[path]) showSourceEvidence(draft.record.meta.fields[path]);
+  });
   $('#btn-add-voce').addEventListener('click', () => { draft.record.voci.push({ codice: '', descrizione: '', base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null }); renderVociEdit(); });
   $('#btn-salva').addEventListener('click', salvaDraft);
   $('#btn-annulla').addEventListener('click', () => { draft = null; showView(Store.data.records.length ? 'dettaglio' : 'importa'); });
@@ -765,15 +1003,15 @@ function renderVerifica() {
 function renderVociEdit() {
   const tb = $('#voci-edit tbody');
   tb.innerHTML = draft.record.voci.map((v, i) => `<tr data-i="${i}">
-    <td><input class="code" data-vk="codice" value="${esc(v.codice || '')}"></td>
-    <td><input class="desc" data-vk="descrizione" value="${esc(v.descrizione || '')}"></td>
-    <td><select data-vk="categoriaManuale" title="Conferma il tipo di voce"><option value="">Automatico</option><option value="competenza" ${v.categoriaManuale === 'competenza' ? 'selected' : ''}>Competenza</option><option value="trattenuta" ${v.categoriaManuale === 'trattenuta' ? 'selected' : ''}>Trattenuta</option><option value="dato" ${v.categoriaManuale === 'dato' ? 'selected' : ''}>Dato</option></select></td>
-    <td class="num"><input data-vk="base" value="${v.base == null ? '' : esc(fmtEur(v.base, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
-    <td class="num"><input data-vk="rifQta" value="${v.rifQta == null ? '' : esc(fmtEur(v.rifQta, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
-    <td><input class="code" data-vk="rifUnita" value="${esc(v.rifUnita || '')}"></td>
-    <td class="num"><input data-vk="trattenuta" value="${v.trattenuta == null ? '' : esc(fmtEur(v.trattenuta))}"></td>
-    <td class="num"><input data-vk="competenza" value="${v.competenza == null ? '' : esc(fmtEur(v.competenza))}"></td>
-    <td><button class="danger del-voce" title="elimina riga">×</button></td>
+    <td data-label="Codice"><input class="code" data-vk="codice" aria-label="Codice voce" value="${esc(v.codice || '')}"></td>
+    <td data-label="Descrizione"><div class="voice-description-edit"><input class="desc" data-vk="descrizione" aria-label="Descrizione voce" value="${esc(v.descrizione || '')}">${v.meta && v.meta.visual && draft.previewPages[v.meta.visual.page] ? `<button type="button" class="source-btn" data-source-voice="${i}" aria-label="Mostra la voce nel documento">⌖</button>` : ''}</div></td>
+    <td data-label="Tipo"><select data-vk="categoriaManuale" aria-label="Conferma il tipo di voce"><option value="">Automatico</option><option value="competenza" ${v.categoriaManuale === 'competenza' ? 'selected' : ''}>Competenza</option><option value="trattenuta" ${v.categoriaManuale === 'trattenuta' ? 'selected' : ''}>Trattenuta</option><option value="dato" ${v.categoriaManuale === 'dato' ? 'selected' : ''}>Dato</option></select></td>
+    <td class="num" data-label="Base"><input data-vk="base" aria-label="Base" value="${v.base == null ? '' : esc(fmtEur(v.base, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
+    <td class="num" data-label="Quantità"><input data-vk="rifQta" aria-label="Quantità" value="${v.rifQta == null ? '' : esc(fmtEur(v.rifQta, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
+    <td data-label="Unità"><input class="code" data-vk="rifUnita" aria-label="Unità" value="${esc(v.rifUnita || '')}"></td>
+    <td class="num" data-label="Trattenuta"><input data-vk="trattenuta" aria-label="Trattenuta" value="${v.trattenuta == null ? '' : esc(fmtEur(v.trattenuta))}"></td>
+    <td class="num" data-label="Competenza"><input data-vk="competenza" aria-label="Competenza" value="${v.competenza == null ? '' : esc(fmtEur(v.competenza))}"></td>
+    <td class="voice-actions" data-label="Azioni"><button class="danger del-voce" title="elimina riga" aria-label="Elimina voce">×</button></td>
   </tr>`).join('');
   tb.addEventListener('click', e => {
     const b = e.target.closest('.del-voce'); if (!b) return;
@@ -787,9 +1025,12 @@ function onVerificaInput(e) {
     const tr = inp.closest('tr'); const v = draft.record.voci[+tr.dataset.i]; if (!v) return;
     const k = inp.dataset.vk;
     v[k] = (k === 'codice' || k === 'descrizione' || k === 'rifUnita' || k === 'categoriaManuale') ? inp.value.trim() : flexNum(inp.value);
+    v.meta = Object.assign({}, v.meta, { confirmed: true, confidence: 1 });
   } else if (inp.dataset.k) {
     const k = inp.dataset.k;
     setPath(draft.record, k, NUM_FIELDS.has(k) ? flexNum(inp.value) : (inp.value.trim() || null));
+    draft.record.meta.fields = draft.record.meta.fields || {};
+    draft.record.meta.fields[k] = Object.assign({}, draft.record.meta.fields[k], { confidence: 1, confirmed: true, method: 'confermato dall’utente' });
     if (k === 'periodo.mese' || k === 'periodo.anno') {
       const p = draft.record.periodo; p.mese = Math.max(1, Math.min(12, Math.round(flexNum(String(p.mese)) || 0))) || p.mese;
     }
@@ -810,14 +1051,24 @@ function liveQuadratura() {
       : `Il risultato più vicino è <b>${fmtEur(quadratura.atteso)}</b> €, ma il netto indicato è <b>${fmtEur(t.netto)}</b> €.`;
     html += `<div class="finding ${quadratura.ok ? 'ok' : 'alert'}"><span class="lvchip ${quadratura.ok ? 'ok' : 'alert'}">${quadratura.ok ? 'OK' : 'Attenzione'}</span><div><p>${message}</p></div></div>`;
   }
+  const consistency = Parser.valutaCoerenza(r);
+  if (consistency.score != null) {
+    const failed = consistency.checks.filter(check => !check.ok).map(check => check.id.replace(/-/g, ' '));
+    html += `<div class="reconciliation-summary"><b>Coerenza globale ${consistency.score}/100</b><span>${consistency.passed}/${consistency.total} vincoli superati${failed.length ? ` · da verificare: ${esc(failed.slice(0, 3).join(', '))}` : ''}</span></div>`;
+  }
+  const alternatives = r.meta && r.meta.reconciliation && r.meta.reconciliation.alternatives || [];
+  const ambiguous = alternatives.length > 1 && alternatives[0].score - alternatives[1].score < .9;
+  if (ambiguous) {
+    html += `<div class="total-alternatives"><p><b>Più letture plausibili dei totali</b><br><span class="muted small">Scegli confrontando il documento: nessuna alternativa viene nascosta.</span></p>${alternatives.map((item, index) => `<button type="button" data-total-alternative="${index}" class="${index === 0 ? 'selected' : ''}"><b>${index + 1}</b><span>Comp. ${fmtEur(item.competenze)} · Tratt. ${fmtEur(item.trattenute)} · Netto ${fmtEur(item.netto)}</span><small>${esc((item.reasons || []).join(', ') || 'candidato da etichette')}</small></button>`).join('')}</div>`;
+  }
   $('#live-quadratura').innerHTML = html;
 }
 function salvaDraft() {
   const r = draft.record;
   if (!r.periodo || !r.periodo.anno || !r.periodo.mese) { toast('Indica mese e anno del cedolino.'); return; }
   r.periodo.label = periodoLabel(r.periodo);
-  const dup = Store.data.records.find(x => x.id !== r.id && x.periodo && x.periodo.anno === r.periodo.anno && x.periodo.mese === r.periodo.mese);
-  if (dup && !confirm(`Esiste già una busta per ${r.periodo.label}: la sostituisco?`)) return;
+  const dup = Store.data.records.find(x => x.id !== r.id && recordIdentityKey(x) === recordIdentityKey(r));
+  if (dup && !confirm(`Esiste già un cedolino ${tipoCedolinoLabel(r).toLowerCase()} di ${r.azienda.nome || 'questa azienda'} per ${r.periodo.label}: lo sostituisco?`)) return;
   if (dup) Store.data.records = Store.data.records.filter(x => x.id !== dup.id);
   r.derivati = Parser.derivaIndice(r);
   imparaCorrezioni(r);
@@ -840,7 +1091,7 @@ function selettorePeriodo(r) {
   const recs = recSorted();
   if (recs.length < 2) return '';
   return `<label class="field" style="max-width:220px;margin-bottom:8px">Mese archiviato
-    <select id="sel-periodo">${recs.map(x => `<option value="${esc(x.id)}" ${x.id === r.id ? 'selected' : ''}>${esc(periodoLabel(x.periodo))}</option>`).join('')}</select>
+    <select id="sel-periodo">${recs.map(x => `<option value="${esc(x.id)}" ${x.id === r.id ? 'selected' : ''}>${esc(periodoLabel(x.periodo))} · ${esc(tipoCedolinoLabel(x))}${x.azienda && x.azienda.nome ? ` · ${esc(x.azienda.nome)}` : ''}</option>`).join('')}</select>
   </label>`;
 }
 function renderDettaglio(id) {
@@ -1240,9 +1491,9 @@ function renderImpostazioni() {
     <p class="muted small">L’export contiene le buste in chiaro: trattalo come un documento riservato.</p>
   </div>
   <div class="card"><h2>Aiuta il parser senza inviare il PDF</h2>
-    <p>Le correzioni fatte alle descrizioni vengono ricordate solo su questo dispositivo. Puoi esportare un pacchetto per contribuire al progetto: elimina nomi, codice fiscale, azienda, file originale e identificativi locali, ma conserva struttura e importi utili ai test.</p>
-    <div class="btnrow"><button class="ghost" id="btn-export-fixtures">Esporta fixture senza anagrafiche</button></div>
-    <p class="muted small">Alias appresi: <b>${(Store.data.voiceAliases || []).length}</b>. Prima di pubblicare il JSON, aprilo e controllalo: descrizioni aziendali e combinazioni di importi potrebbero comunque essere riconoscibili.</p>
+    <p>Le correzioni vengono ricordate solo su questo dispositivo. Il pacchetto per contribuire rimuove identità e file, cancella gli estratti testuali e trasforma gli importi mantenendo le relazioni matematiche.</p>
+    <div class="btnrow"><button class="ghost" id="btn-export-fixtures">Controlla ed esporta fixture</button></div>
+    <p class="muted small">Alias appresi: <b>${(Store.data.voiceAliases || []).length}</b>. Prima dell’esportazione vedrai un riepilogo privacy; le causali proprietarie vanno comunque ricontrollate.</p>
   </div>
   <div class="card"><h2>Editor CCNL personalizzato</h2>
     <p class="muted small">Copia i valori dal testo del tuo CCNL (archivio CNEL o sindacati) e avrai i controlli su misura.</p>
@@ -1271,14 +1522,7 @@ function renderImpostazioni() {
   });
   $('#btn-export-fixtures').addEventListener('click', () => {
     if (!Store.data.records.length && !(Store.data.voiceAliases || []).length) { toast('Non ci sono ancora correzioni o buste da esportare.'); return; }
-    if (!confirm('Il file rimuove le anagrafiche, ma conserva descrizioni e importi per poter riprodurre il parsing. Vuoi crearlo e controllarlo prima di condividerlo?')) return;
-    const contribution = {
-      schema: 'bustachiara-anonymized-fixtures-v1',
-      generatedAt: new Date().toISOString(),
-      aliases: (Store.data.voiceAliases || []).map(({ software, key, originale, descrizione, categoria, nome }) => ({ software, key, originale, descrizione, categoria, nome })),
-      fixtures: Store.data.records.map(anonymizeFixture),
-    };
-    downloadJson('bustachiara-fixtures-senza-anagrafiche-' + new Date().toISOString().slice(0, 10) + '.json', contribution);
+    openContributionPreview();
   });
   $('#btn-import-json').addEventListener('click', () => $('#json-input').click());
   $('#json-input').addEventListener('change', async (e) => {
@@ -1336,7 +1580,41 @@ function downloadJson(name, value) {
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-function anonymizeFixture(record) {
+function scrubContributionText(value) {
+  return String(value || '')
+    .replace(/\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/gi, '[CF]')
+    .replace(/\bIT\d{2}[A-Z]\d{10}[A-Z0-9]{12}\b/gi, '[IBAN]')
+    .replace(/\b\d{11}\b/g, '[ID]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL]')
+    .replace(/(?:\+39[ .-]?)?(?:\d[ .-]?){9,10}\b/g, '[TELEFONO]')
+    .replace(/\b[A-ZÀ-Ù][A-ZÀ-Ù' &.-]{2,}\s+(?:S\.?R\.?L\.?|S\.?P\.?A\.?|S\.?A\.?S\.?|S\.?N\.?C\.?|COOP(?:ERATIVA)?)\b/gi, '[AZIENDA]');
+}
+function scaleFixtureMoney(clone, factor) {
+  const round = value => Math.round(value * factor * 100) / 100;
+  const paths = [
+    'elementi.pagaBase', 'elementi.contingenza', 'elementi.superminimo', 'elementi.scatti', 'elementi.totale',
+    'orario.pagaOraria', 'orario.pagaGiornaliera', 'totali.competenze', 'totali.trattenute', 'totali.arrotondamento', 'totali.netto',
+    'tfr.retribUtile', 'tfr.quotaMese', 'tfr.fondo3112', 'tfr.rivalutazione', 'tfr.impRivalutazione', 'tfr.quotaAnno', 'tfr.aFondi', 'tfr.anticipi',
+    'progressivi.impInps', 'progressivi.impIrpef', 'progressivi.irpefPagata', 'progressivi.impInail',
+  ];
+  for (const path of paths) { const value = getPath(clone, path); if (typeof value === 'number') setPath(clone, path, round(value)); }
+  for (const voice of clone.voci || []) for (const key of ['base', 'trattenuta', 'competenza', 'costoAzienda']) if (typeof voice[key] === 'number') voice[key] = round(voice[key]);
+  if (clone.totali && clone.totali.competenze != null && clone.totali.trattenute != null) {
+    clone.totali.netto = Math.round((clone.totali.competenze - clone.totali.trattenute + (clone.totali.arrotondamento || 0)) * 100) / 100;
+  }
+  delete clone.derivati;
+  if (clone.meta && clone.meta.reconciliation) {
+    if (clone.meta.reconciliation.voiceSums) for (const key of ['competenze', 'trattenute']) if (typeof clone.meta.reconciliation.voiceSums[key] === 'number') clone.meta.reconciliation.voiceSums[key] = round(clone.meta.reconciliation.voiceSums[key]);
+    for (const item of clone.meta.reconciliation.alternatives || []) for (const key of ['competenze', 'trattenute', 'arrotondamento', 'netto']) if (typeof item[key] === 'number') item[key] = round(item[key]);
+    // Le differenze dei controlli possono ricostruire importi reali: il punteggio
+    // resta utile alla fixture, i dettagli numerici vengono rigenerati dal parser.
+    delete clone.meta.reconciliation.checks;
+  }
+  for (const candidates of Object.values(clone.meta && clone.meta.candidates || {})) {
+    for (const candidate of candidates || []) if (typeof candidate.value === 'number') candidate.value = round(candidate.value);
+  }
+}
+function anonymizeFixture(record, factor = .93) {
   const clone = JSON.parse(JSON.stringify(record));
   delete clone.id;
   clone.azienda = {};
@@ -1347,25 +1625,61 @@ function anonymizeFixture(record) {
   if (clone.meta) {
     delete clone.meta.fileName;
     delete clone.meta.importedAt;
+    for (const meta of Object.values(clone.meta.fields || {})) { delete meta.snippet; delete meta.label; }
+    for (const candidates of Object.values(clone.meta.candidates || {})) for (const candidate of candidates) { delete candidate.snippet; delete candidate.label; }
   }
-  const scrub = value => String(value || '')
-    .replace(/\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/gi, '[CF]')
-    .replace(/\bIT\d{2}[A-Z]\d{10}[A-Z0-9]{12}\b/gi, '[IBAN]')
-    .replace(/\b\d{11}\b/g, '[ID]')
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[EMAIL]');
   for (const voice of clone.voci || []) {
-    voice.descrizione = scrub(voice.descrizione);
-    voice.descrizioneOriginale = scrub(voice.descrizioneOriginale);
+    voice.descrizione = scrubContributionText(voice.descrizione);
+    voice.descrizioneOriginale = scrubContributionText(voice.descrizioneOriginale);
+    if (voice.rifTesto) voice.rifTesto = scrubContributionText(voice.rifTesto);
+    if (voice.meta && voice.meta.visual) delete voice.meta.visual.snippet;
   }
+  scaleFixtureMoney(clone, factor);
   return clone;
+}
+
+function createContributionPackage() {
+  const factor = .82 + Math.random() * .34;
+  const aliases = (Store.data.voiceAliases || []).map(({ software, key, originale, descrizione, categoria, nome }) => ({
+    software: scrubContributionText(software), key: scrubContributionText(key), originale: scrubContributionText(originale),
+    descrizione: scrubContributionText(descrizione), categoria, nome: scrubContributionText(nome),
+  }));
+  const fixtures = Store.data.records.map(record => anonymizeFixture(record, factor));
+  return {
+    contribution: { schema: 'bustachiara-anonymized-fixtures-v2', generatedAt: new Date().toISOString(), aliases, fixtures },
+    report: {
+      fixtures: fixtures.length, aliases: aliases.length,
+      voices: fixtures.reduce((sum, record) => sum + (record.voci || []).length, 0),
+      customDescriptions: fixtures.reduce((sum, record) => sum + (record.voci || []).filter(voice => !voice.codice || /gestionale|aziendale/i.test(voice.descrizione || '')).length, 0),
+    },
+  };
+}
+function openContributionPreview() {
+  const result = createContributionPackage();
+  const report = result.report;
+  openInfo('Controllo privacy del contributo', `
+    <div class="privacy-checklist">
+      <p><b>${report.fixtures}</b> fixture · <b>${report.voices}</b> voci · <b>${report.aliases}</b> correzioni locali</p>
+      <p>✓ Nomi, codice fiscale, azienda, identificativi e nome file rimossi.</p>
+      <p>✓ Estratti testuali della pagina eliminati; restano soltanto coordinate anonime.</p>
+      <p>✓ Importi trasformati con un fattore casuale mantenendo la quadratura.</p>
+      <p>${report.customDescriptions ? `⚠ Restano ${report.customDescriptions} causali proprietarie: leggile nel JSON prima di pubblicarlo.` : '✓ Nessuna causale proprietaria evidente.'}</p>
+    </div>
+    <div class="btnrow"><button class="primary" id="confirm-fixture-export">Crea il file da controllare</button><button class="ghost" id="cancel-fixture-export">Annulla</button></div>`);
+  $('#confirm-fixture-export').addEventListener('click', () => {
+    downloadJson('bustachiara-fixtures-anonime-' + new Date().toISOString().slice(0, 10) + '.json', result.contribution);
+    closeInfo(); toast('Fixture creata: aprila e rileggila prima di condividerla.');
+  });
+  $('#cancel-fixture-export').addEventListener('click', closeInfo);
 }
 
 /* ============================================================
    BUSTA DI ESEMPIO (dati inventati ma internamente coerenti)
    ============================================================ */
 function demoRecord() {
-  return {
+  return enrichDemoRecord({
     id: uid(),
+    documento: { tipo: 'ordinario' },
     periodo: { mese: 6, anno: 2026, label: 'Giugno 2026' },
     azienda: { nome: 'ALBERGO ESEMPIO S.R.L.', cf: '01234567890' },
     dipendente: { nome: 'MARIO ROSSI', cf: 'RSSMRA90A01H501X', livello: '4', qualifica: 'IMP', dataAssunzione: '06-01-2025' },
@@ -1394,8 +1708,51 @@ function demoRecord() {
     progressivi: { impInps: 14322.00, impIrpef: 12966.60, irpefPagata: 1400.22 },
     ratei: { ferie: { residuoAp: 4, maturato: 13, goduto: 6, saldo: 11, unita: 'GG' }, permessi: { residuoAp: 10, maturato: 52, goduto: 20, saldo: 42, unita: 'ORE' } },
     totali: { competenze: 2386.83, trattenute: 481.10, arrotondamento: 0.27, netto: 1906.00 },
-    meta: { fonte: 'esempio', software: 'Zucchetti (simulato)' },
+    meta: { fonte: 'esempio', software: 'Zucchetti (simulato)', settore: 'privato-lul', fields: {}, candidates: {}, reconciliation: {}, pageSizes: [] },
+  });
+}
+
+function enrichDemoRecord(record) {
+  record.meta.pageSizes = [{ width: 600, height: 842 }];
+  const evidence = {
+    'ccnl.cnel': [48, 700, 220, 24], 'ccnl.descrizione': [48, 674, 300, 24],
+    'dipendente.nome': [48, 748, 220, 24], 'dipendente.cf': [318, 748, 220, 24],
+    'elementi.pagaBase': [48, 622, 150, 22], 'elementi.superminimo': [210, 622, 150, 22], 'elementi.totale': [372, 622, 150, 22],
+    'totali.competenze': [310, 144, 220, 24], 'totali.trattenute': [310, 116, 220, 24], 'totali.netto': [310, 78, 220, 30],
   };
+  for (const [path, [x, y, w, h]] of Object.entries(evidence)) record.meta.fields[path] = {
+    confidence: .96, source: 'esempio', method: 'testo-coordinate', page: 0, bbox: { x, y, w, h }, snippet: 'Documento dimostrativo',
+  };
+  (record.voci || []).forEach((voice, index) => {
+    if (index > 8) return;
+    voice.meta = { source: 'esempio', confidence: .98, visual: { page: 0, bbox: { x: 44, y: 550 - index * 31, w: 500, h: 23 }, snippet: voice.descrizione } };
+    voice.descrizioneOriginale = voice.descrizione;
+  });
+  return record;
+}
+
+function demoPreviewDataUrl() {
+  const rows = [
+    ['Z00001', 'Retribuzione', '1.860,47'], ['Z00250', 'Ferie godute', '93,02'], ['Z00255', 'Permessi ROL', '46,51'],
+    ['Z50000', '13ma mensilità', '166,67'], ['Z50022', '14ma mensilità', '166,67'], ['000030', 'Straordinario 15%', '53,49'],
+    ['Z31210', 'Fondo FAST', '-2,00'], ['Z00000', 'Contributo IVS', '-219,36'], ['F03020', 'Ritenute IRPEF', '-233,37'],
+  ];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="842" viewBox="0 0 600 842">
+    <rect width="600" height="842" fill="#fff"/><rect x="30" y="30" width="540" height="782" rx="4" fill="none" stroke="#b8c5c0"/>
+    <text x="48" y="68" font-family="Arial" font-size="23" font-weight="700" fill="#12382c">CEDOLINO PAGA — ESEMPIO</text>
+    <text x="48" y="92" font-family="Arial" font-size="12" fill="#557069">Dati interamente inventati</text>
+    <text x="48" y="118" font-family="Arial" font-size="12">MARIO ROSSI</text><text x="318" y="118" font-family="Arial" font-size="12">RSSMRA90A01H501X</text>
+    <text x="48" y="144" font-family="Arial" font-size="12">CNEL H052</text><text x="48" y="170" font-family="Arial" font-size="12">Alberghi Imprese Confcommercio</text>
+    <line x1="48" y1="190" x2="550" y2="190" stroke="#ccd6d2"/>
+    <text x="48" y="216" font-family="Arial" font-size="11" fill="#557069">PAGA BASE</text><text x="210" y="216" font-family="Arial" font-size="11" fill="#557069">SUPERMINIMO</text><text x="372" y="216" font-family="Arial" font-size="11" fill="#557069">TOTALE ELEMENTI</text>
+    <text x="48" y="238" font-family="Arial" font-size="14" font-weight="700">1.688,98</text><text x="210" y="238" font-family="Arial" font-size="14" font-weight="700">311,02</text><text x="372" y="238" font-family="Arial" font-size="14" font-weight="700">2.000,00</text>
+    <text x="48" y="278" font-family="Arial" font-size="11" font-weight="700">CODICE</text><text x="132" y="278" font-family="Arial" font-size="11" font-weight="700">DESCRIZIONE</text><text x="500" y="278" text-anchor="end" font-family="Arial" font-size="11" font-weight="700">IMPORTO</text>
+    ${rows.map((row, index) => `<g transform="translate(0 ${index * 31})"><line x1="48" y1="292" x2="550" y2="292" stroke="#e5ebe8"/><text x="48" y="313" font-family="Arial" font-size="11">${row[0]}</text><text x="132" y="313" font-family="Arial" font-size="11">${row[1]}</text><text x="500" y="313" text-anchor="end" font-family="Arial" font-size="11">${row[2]}</text></g>`).join('')}
+    <line x1="300" y1="680" x2="550" y2="680" stroke="#8da69c"/><text x="310" y="706" font-family="Arial" font-size="12">TOTALE COMPETENZE</text><text x="530" y="706" text-anchor="end" font-family="Arial" font-size="12" font-weight="700">2.386,83</text>
+    <text x="310" y="734" font-family="Arial" font-size="12">TOTALE TRATTENUTE</text><text x="530" y="734" text-anchor="end" font-family="Arial" font-size="12" font-weight="700">481,10</text>
+    <rect x="300" y="748" width="250" height="42" rx="5" fill="#e9f5ef"/><text x="310" y="774" font-family="Arial" font-size="14" font-weight="700" fill="#075b42">NETTO IN BUSTA</text><text x="530" y="774" text-anchor="end" font-family="Arial" font-size="14" font-weight="700" fill="#075b42">1.906,00</text>
+  </svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
 
