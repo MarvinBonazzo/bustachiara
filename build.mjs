@@ -15,6 +15,7 @@ let html = readFileSync(src('template.html'), 'utf8');
 
 const parts = {
   '/*__CSS__*/': readFileSync(src('app.css'), 'utf8'),
+  '__APP_ICON_B64__': b64(join(ROOT, 'pwa', 'icons', 'icon-192.png')),
   '/*__PDF_JS__*/': jsSafe(readFileSync(vend('pdf.min.js'), 'utf8')),
   '/*__TESS_JS__*/': jsSafe(readFileSync(vend('tesseract.min.js'), 'utf8')),
   '__PDF_WORKER_B64__': b64(vend('pdf.worker.min.js')),
@@ -30,7 +31,7 @@ const parts = {
 for (const [token, content] of Object.entries(parts)) {
   const i = html.indexOf(token);
   if (i === -1) { console.error('Token mancante nel template:', token); process.exit(1); }
-  html = html.slice(0, i) + content + html.slice(i + token.length);
+  html = html.split(token).join(content);
 }
 
 const out = join(ROOT, 'BustaChiara.html');

@@ -1,4 +1,4 @@
-# 🧾 BustaChiara
+# BustaChiara
 
 **La busta paga italiana, spiegata — 100% privata, 100% offline, un solo file HTML.**
 
@@ -58,7 +58,10 @@ quote), il netto arrivato, le ferie e i permessi rimasti, il TFR messo da parte,
 controlli hanno trovato qualcosa che non torna.
 
 ### Flusso tipico
-1. **Importa** → trascina il PDF della busta (o una foto: parte la lettura ottica locale).
+1. **Importa** → trascina il PDF della busta (anche **protetto da password**: viene chiesta
+   al momento e non lasciata da nessuna parte), oppure **uno screenshot o una foto**: la
+   lettura ottica locale ricostruisce la tabella delle voci usando le coordinate delle
+   parole, quindi anche da un'immagine l'estrazione è quasi completa.
 2. **Verifica** → l'app mostra tutto ciò che ha estratto; controlla e correggi. *I controlli
    valgono quanto i dati che confermi.*
 3. **Dettaglio** → se c'è qualcosa che non torna appare SUBITO in cima ("Da controllare in
@@ -75,11 +78,17 @@ controlli hanno trovato qualcosa che non torna.
    busta. L'app spiega i fatti e cosa cambia con ogni scelta; non dice mai cosa fare.
 6. **Il progetto** (pulsante in alto) → perché esiste l'app e perché tutto è locale.
 
-Interfaccia: tema unico chiaro, minimale, con accento verde; solo i bottoni hanno angoli
-stondati, i riquadri sono a linee dritte. Schede in ordine Dettaglio · Guida e fonti ·
-Curiosità · Altro · Importa (in Semplificato restano Dettaglio, Guida e fonti, Curiosità
-e Importa). Quando pubblichi un aggiornamento della PWA, alza la versione della cache in
-`pwa/sw.js` (`bustachiara-v2`, `-v3`…) così i dispositivi scaricano la novità.
+Interfaccia: chiara e rassicurante, costruita attorno all’icona del **foglio illuminato**. Il pulsante **Riassunto** racconta il mese
+in parole semplicissime e include la barra "Dove vanno i tuoi soldi" (verde = netto,
+arancione = contributi INPS, rosso = tasse, grigio = piccole quote). Schede in ordine
+Importa · Dettaglio · Guida e fonti · Curiosità · Altro (in Semplificato restano Importa,
+Dettaglio, Guida e fonti e Curiosità). Quando pubblichi un aggiornamento della PWA, alza la
+versione della cache in `pwa/sw.js` (`bustachiara-v2`, `-v3`…) così i dispositivi scaricano
+la novità.
+
+Licenza: **MIT** (file `LICENSE`, riportata anche nel piè di pagina dell'app). Verificato
+prima della pubblicazione: nei file del progetto non ci sono chiavi API, password o dati
+personali — l'unica "busta" inclusa è l'esempio con dati inventati (Mario Rossi).
 
 ---
 
@@ -218,9 +227,9 @@ BustaChiara/
 ├── pwa/               ← versione installabile, pronta per GitHub Pages
 │   ├── index.html     (stessa app, rigenerata dalla build)
 │   ├── manifest.webmanifest, sw.js (offline totale dopo la prima visita)
-│   └── icons/         (icona verde generata da make-icons.py)
+│   └── icons/         (foglio illuminato + tagli PWA generati da make-icons.py)
 ├── build.mjs          ← assembla il file unico E pwa/index.html
-├── make-icons.py      ← rigenera le icone PWA
+├── make-icons.py      ← rigenera le icone PWA dalla sorgente (richiede Pillow)
 ├── src/
 │   ├── template.html  ← struttura + CSP
 │   ├── app.css        ← stile (responsive; tema chiaro arancione / scuro blu)

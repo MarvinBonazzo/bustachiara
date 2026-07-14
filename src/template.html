@@ -4,20 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: 'self'; style-src 'unsafe-inline'; img-src data: blob: 'self'; font-src data:; connect-src blob: data: 'self'; worker-src blob: 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'">
+<meta name="description" content="Leggi e capisci la tua busta paga italiana, in privato e anche offline.">
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#1d7a4a">
+<meta name="theme-color" content="#075b41">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="BustaChiara">
+<link rel="icon" type="image/png" href="data:image/png;base64,__APP_ICON_B64__">
 <title>BustaChiara — la tua busta paga, spiegata. 100% offline</title>
 <style>
 /*__CSS__*/
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Vai al contenuto</a>
 <header id="topbar">
-  <div class="brand"><span class="logo">🧾</span><div><h1>BustaChiara</h1><p>La busta paga, spiegata — tutto resta sul tuo dispositivo</p></div></div>
+  <div class="brand"><img class="logo" src="data:image/png;base64,__APP_ICON_B64__" alt=""><div><h1>Busta<span>Chiara</span></h1><p>La tua busta paga, finalmente leggibile</p></div></div>
   <div class="topctrl">
     <div class="seg" id="modo-seg" role="group" aria-label="Modalità">
       <button data-modo="semplificato">Semplificato</button>
@@ -25,19 +28,20 @@
     </div>
     <button id="riassunto-btn" class="seg-btn" title="Il tuo mese in parole semplicissime">Riassunto</button>
     <button id="progetto-btn" class="seg-btn" title="Perché esiste questa app">Il progetto</button>
-    <span id="privacy-badge" title="Questa pagina ha una Content-Security-Policy che blocca OGNI connessione di rete: i tuoi dati non possono uscire.">🔒 100% locale</span>
+    <button id="install-btn" class="seg-btn install-btn" hidden>Installa</button>
+    <button id="privacy-badge" title="Scopri come BustaChiara protegge i tuoi dati">🔒 Solo sul dispositivo</button>
   </div>
 </header>
 
-<nav id="tabs">
+<nav id="tabs" aria-label="Sezioni dell'app">
+  <button data-view="importa" class="tab">Importa</button>
   <button data-view="dettaglio" class="tab">Dettaglio</button>
   <button data-view="guida" class="tab">Guida e fonti</button>
   <button data-view="consigli" class="tab">Curiosità</button>
   <button data-view="impostazioni" class="tab">Altro</button>
-  <button data-view="importa" class="tab">Importa</button>
 </nav>
 
-<main>
+<main id="main-content" tabindex="-1">
   <section id="view-importa" class="view"></section>
   <section id="view-verifica" class="view"></section>
   <section id="view-dettaglio" class="view"></section>
@@ -49,17 +53,18 @@
 
 <footer>
   <p><strong>BustaChiara è uno strumento informativo</strong>: non sostituisce un consulente del lavoro, un CAF o un sindacato. I valori dei CCNL contrassegnati come "da verificare" sono indicativi e vanno controllati sul testo ufficiale (link forniti). Nessun dato lascia questo dispositivo.</p>
+  <p class="license">MIT License — Copyright (c) 2026 Marvin</p>
 </footer>
 
 <div id="popover" hidden>
   <div id="popover-backdrop"></div>
-  <div id="popover-card" role="dialog" aria-modal="true">
+  <div id="popover-card" role="dialog" aria-modal="true" aria-labelledby="popover-title" tabindex="-1">
     <div id="popover-head"><h3 id="popover-title"></h3><button id="popover-close" aria-label="Chiudi">×</button></div>
     <div id="popover-body"></div>
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>/*__PDF_JS__*/</script>
 <script>/*__TESS_JS__*/</script>
