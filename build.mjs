@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Assembla BustaChiara.html: un unico file autonomo e offline. */
+/* Assembla la PWA in un unico index.html autonomo e offline. */
 import { readFileSync, writeFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -34,11 +34,6 @@ for (const [token, content] of Object.entries(parts)) {
   html = html.split(token).join(content);
 }
 
-const out = join(ROOT, 'BustaChiara.html');
+const out = join(ROOT, 'pwa', 'index.html');
 writeFileSync(out, html);
-console.log('OK →', out, (statSync(out).size / 1048576).toFixed(1), 'MB');
-
-// Versione PWA: stessa app come index.html accanto a manifest, sw.js e icone.
-// La cartella pwa/ è pronta da pubblicare così com'è (es. GitHub Pages).
-writeFileSync(join(ROOT, 'pwa', 'index.html'), html);
-console.log('OK →', join(ROOT, 'pwa', 'index.html'), '(PWA)');
+console.log('OK →', out, (statSync(out).size / 1048576).toFixed(1), 'MB (PWA)');

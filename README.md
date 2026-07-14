@@ -1,6 +1,6 @@
 # BustaChiara
 
-**La busta paga italiana, spiegata — 100% privata, 100% offline, un solo file HTML.**
+**La busta paga italiana, spiegata — 100% privata, 100% offline e installabile su ogni dispositivo.**
 
 BustaChiara legge le tue buste paga (PDF, scansioni o foto), spiega ogni voce, rifà i conti
 (IRPEF, INPS, TFR, ferie, permessi, minimi contrattuali), segnala ciò che non torna e tiene
@@ -9,32 +9,61 @@ mai inviato da nessuna parte — non a un server, non a un'AI, non a nessuno.
 
 ---
 
-## 1. Come si usa
+## 1. Apri e installa BustaChiara
 
-Ci sono **due modi** per usare BustaChiara, identici nei contenuti:
+### Link pubblico dell’app
 
-### A) App installabile (PWA) — il modo più comodo per tutti i dispositivi
-La cartella **`pwa/`** è pronta da pubblicare così com'è su un hosting HTTPS
-(GitHub Pages è perfetto e gratuito):
+**[Apri BustaChiara](https://shivenbonazzo.github.io/bustachiara/)**
 
-1. Crea un repository su GitHub e carica il contenuto della cartella `pwa/`
-   (oppure l'intera cartella e imposta Pages sulla sottocartella).
-2. Su GitHub: Settings → Pages → deploy dal branch → salva. Dopo un minuto l'app è a
-   `https://tuonome.github.io/nomerepo/`.
-3. Chi apre quel link può **installarla**: su Android (Chrome) "Aggiungi a schermata Home"
-   o "Installa app"; su iPhone/iPad (Safari) tasto Condividi → "Aggiungi a schermata Home";
-   su PC/Mac (Chrome/Edge) icona di installazione nella barra dell'indirizzo.
-4. Dopo la prima apertura funziona **completamente offline** (service worker): anche in
-   aereo. I dati restano comunque solo sul dispositivo di chi la usa — l'hosting serve
-   solo a consegnare il file, non riceve mai nulla.
+Per condividerla con altre persone basta inviare questo link. Non occorre cercare l’app su
+App Store o Play Store: BustaChiara è una **PWA**, cioè un sito sicuro che si installa
+direttamente sul dispositivo e poi si apre come una normale applicazione.
 
-### B) File singolo — zero hosting
-**`BustaChiara.html`** resta autonomo: doppio clic e funziona, anche senza internet.
-- **Computer**: doppio clic, si apre nel browser.
-- **Android**: copia il file e aprilo con Chrome/Firefox (o usa la PWA, più comodo).
-- **iPhone/iPad**: l'anteprima di iOS non esegue JavaScript → usa la PWA (punto A), che su
-  iPhone è la strada di gran lunga migliore, oppure un'app che esegue HTML locale
-  (es. Documents di Readdle).
+### iPhone e iPad
+
+1. Apri il link con **Safari**.
+2. Tocca **Condividi** — il quadrato con la freccia verso l’alto.
+3. Scorri il menu e scegli **Aggiungi alla schermata Home**.
+4. Tocca **Aggiungi**.
+5. Apri BustaChiara dalla nuova icona comparsa nella schermata Home.
+
+### Smartphone e tablet Android
+
+1. Apri il link con **Google Chrome**.
+2. Tocca il menu **⋮** in alto a destra.
+3. Scegli **Installa app** oppure **Aggiungi alla schermata Home**.
+4. Conferma con **Installa**.
+5. Apri BustaChiara dall’icona nella schermata Home o dal cassetto delle applicazioni.
+
+Se il browser mostra direttamente il pulsante **Installa**, puoi usare quello.
+
+### PC Windows o Linux
+
+1. Apri il link con **Google Chrome** o **Microsoft Edge**.
+2. Clicca l’icona di installazione nella parte destra della barra degli indirizzi.
+3. In alternativa, apri il menu del browser e scegli **Installa BustaChiara**.
+4. Conferma: l’app comparirà nel menu Start/applicazioni e potrà avere un collegamento sul desktop.
+
+Firefox può aprire e usare BustaChiara normalmente, ma per installarla come applicazione
+desktop è consigliato Chrome o Edge.
+
+### Mac
+
+- **Safari 17 o successivo:** apri il link e scegli **File → Aggiungi al Dock**.
+- **Chrome o Edge:** usa l’icona di installazione nella barra degli indirizzi oppure il
+  comando **Installa BustaChiara** nel menu del browser.
+
+### Dopo l’installazione
+
+- Serve una connessione solo alla **prima apertura** e per ricevere gli aggiornamenti.
+- Dopo il primo caricamento l’app funziona anche **offline**.
+- Gli aggiornamenti arrivano automaticamente quando viene pubblicata una nuova versione.
+- I dati restano nel browser del singolo dispositivo e non si sincronizzano: usa
+  **Altro → Esporta tutto** per fare un backup o trasferirli.
+
+Le stesse istruzioni sono sempre disponibili dentro l’app tramite il pulsante **Installa**.
+
+---
 
 > ⚠️ I dati (cronologia) sono salvati nel browser **del dispositivo che usi**: non si
 > sincronizzano da soli tra dispositivi. Usa **⚙️ Altro → Esporta** per fare backup o
@@ -45,8 +74,8 @@ La cartella **`pwa/`** è pronta da pubblicare così com'è su un hosting HTTPS
   progressivi, confronto col CCNL e, in fondo, la tendina "Informazioni generali" con tutti
   i controlli automatici (formule incluse).
 - **Semplificato**: pensato per chi è al primo impiego — solo netto, voci in parole povere
-  (verde = ricevi, rosso = trattenuto) e consigli semplici. Restano solo le schede
-  Dettaglio, Consigli e Importa.
+  (verde = ricevi, rosso = trattenuto) e consigli semplici. Restano le schede Importa,
+  Dettaglio, Guida e fonti e Curiosità.
 
 Ovunque trovi una **"i"**: toccala e si apre la spiegazione in parole semplici di quel
 termine o di quella voce (competenza, trattenuta, imponibile, TFR, rateo…). Il dizionario
@@ -219,20 +248,41 @@ di continuo: più il tempo passa, più fidati dei link e meno dell'archivio inte
 
 ---
 
-## 7. Architettura tecnica
+## 7. Progetto Open Source e contributi
+
+BustaChiara è un progetto **Open Source** distribuito con licenza MIT. Il codice è pubblico
+e chiunque può aiutare a rendere l’app più chiara, precisa, accessibile e utile.
+
+Puoi contribuire in molti modi:
+
+- segnalando errori o comportamenti poco chiari tramite le
+  [GitHub Issues](https://github.com/ShivenBonazzo/bustachiara/issues);
+- proponendo nuove funzioni o miglioramenti dell’interfaccia;
+- correggendo o semplificando le spiegazioni;
+- verificando dati, formule e informazioni relative ai CCNL;
+- migliorando parser PDF, OCR, accessibilità, documentazione o codice;
+- inviando una Pull Request al
+  [repository GitHub](https://github.com/ShivenBonazzo/bustachiara).
+
+Ogni persona che contribuirà concretamente al progetto verrà riconosciuta nella
+**lista dei contributori**. La lista verrà aggiornata qui man mano che arriveranno
+contributi accettati.
+
+---
+
+## 8. Architettura tecnica
 
 ```
 BustaChiara/
-├── BustaChiara.html   ← file singolo da usare/copiare (~9 MB, autonomo)
 ├── pwa/               ← versione installabile, pronta per GitHub Pages
-│   ├── index.html     (stessa app, rigenerata dalla build)
+│   ├── index.html     (generato automaticamente durante il deploy, non versionato)
 │   ├── manifest.webmanifest, sw.js (offline totale dopo la prima visita)
 │   └── icons/         (foglio illuminato + tagli PWA generati da make-icons.py)
-├── build.mjs          ← assembla il file unico E pwa/index.html
+├── build.mjs          ← assembla pwa/index.html dai sorgenti
 ├── make-icons.py      ← rigenera le icone PWA dalla sorgente (richiede Pillow)
 ├── src/
 │   ├── template.html  ← struttura + CSP
-│   ├── app.css        ← stile (responsive; tema chiaro arancione / scuro blu)
+│   ├── app.css        ← stile responsive e identità visiva verde del foglio illuminato
 │   ├── data.js        ← FISCO (2024–26), CCNL_DB (20), dizionario voci, GLOSSARIO, LEGGE, FONTI, CONSIGLI
 │   ├── parser.js      ← parser PDF (layout Zucchetti + euristiche generiche + testo OCR)
 │   ├── checks.js      ← motore dei controlli
@@ -249,7 +299,8 @@ BustaChiara/
   IMPORTO BASE / RIFERIMENTO / TRATTENUTE / COMPETENZE), gestisce le stranezze del formato
   Zucchetti (etichette con separatore "s") e ha un fallback generico per altri software
   (TeamSystem, Inaz, ADP…) + testo OCR. Qualunque estrazione passa dalla schermata di verifica.
-- **Ricompilare dopo una modifica**: `node build.mjs` (serve solo Node.js).
+- **Ricompilare dopo una modifica**: `node build.mjs` (serve solo Node.js). Su GitHub il
+  workflow Pages esegue automaticamente la build prima di ogni pubblicazione.
 
 ### Test eseguiti
 - Parser e controlli verificati su un **cedolino Zucchetti reale** (Turismo 4° livello,
@@ -262,7 +313,7 @@ BustaChiara/
 
 ---
 
-## 8. Disclaimer
+## 9. Disclaimer
 
 BustaChiara è uno **strumento informativo e didattico**. Non sostituisce consulenti del
 lavoro, CAF, patronati o sindacati; non fornisce consulenza fiscale, legale o finanziaria.
