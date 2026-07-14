@@ -1,0 +1,60 @@
+[
+  {
+    "id": "domestico-mensile",
+    "type": "text",
+    "text": "FAC SIMILE CEDOLINO PAGA (MENSILE)\nDATORE DI LAVORO: FAMIGLIA ESEMPIO\nLAVORATRICE: PERSONA ESEMPIO\nMese e Anno: Giugno 2026\nRetribuzione mensile € 1.200,00\nN° Festività 1 Importo € 46,15\nTOTALE LORDO € 1.246,15\nRitenute INPS a carico lavoratrice € 113,40\nRETRIBUZIONE NETTA € 1.132,75",
+    "expected": {
+      "meta.software": "Lavoro domestico",
+      "periodo.mese": 6,
+      "totali.competenze": 1246.15,
+      "totali.trattenute": 113.4,
+      "totali.netto": 1132.75
+    }
+  },
+  {
+    "id": "noipa-pubblico",
+    "type": "text",
+    "text": "NUOVO CEDOLINO NoiPA\nRATA DI RIFERIMENTO: GIUGNO 2026\nCOMPETENZE FISSE\nStipendio tabellare 1.950,00\nIndennità di amministrazione 300,00\nTRATTENUTE\nRitenute previdenziali INPDAP 220,00\nIRPEF 350,00\nTOTALE COMPETENZE 2.250,00\nTOTALE TRATTENUTE 570,00\nIMPORTO NETTO 1.680,00",
+    "expected": {
+      "meta.software": "NoiPA",
+      "periodo.mese": 6,
+      "totali.competenze": 2250,
+      "totali.trattenute": 570,
+      "totali.netto": 1680
+    }
+  },
+  {
+    "id": "edilizia-cassa-edile",
+    "type": "text",
+    "text": "PROSPETTO PAGA CASSA EDILE\nCEDOLINO 06/2026\nRetribuzione ordinaria ORE 173,00 11,00000 1.903,00\nElemento variabile della retribuzione EVR 76,12\nAccantonamento Cassa Edile GNF 270,23\nContributo INPS 2.249,00 206,68\nTOTALE COMPETENZE 2.249,35\nTOTALE TRATTENUTE 506,68\nNETTO A PAGARE 1.742,67",
+    "expected": {
+      "meta.software": "Cassa Edile / edilizia",
+      "periodo.mese": 6,
+      "totali.competenze": 2249.35,
+      "totali.netto": 1742.67
+    }
+  },
+  {
+    "id": "tabella-senza-codici",
+    "type": "pages",
+    "pages": [
+      [
+        [800, [[40, "CEDOLINO PAGA"], [420, "PERIODO GIUGNO 2026"]]],
+        [650, [[40, "DESCRIZIONE"], [300, "BASE"], [370, "QUANTITA"], [430, "IMPORTO"], [480, "TRATTENUTE"], [550, "COMPETENZE"]]],
+        [630, [[40, "Retribuzione ordinaria"], [300, "10,00000"], [370, "160,00"], [550, "1.600,00"]]],
+        [610, [[40, "Indennità di turno"], [300, "2,00000"], [370, "20,00"], [550, "40,00"]]],
+        [590, [[40, "Contributo INPS"], [300, "1.640,00"], [370, "9,19"], [480, "150,72"]]],
+        [300, [[430, "TOTALE COMPETENZE"], [550, "1.640,00"]]],
+        [280, [[430, "TOTALE TRATTENUTE"], [550, "340,00"]]],
+        [260, [[430, "NETTO IN BUSTA"], [550, "1.300,00"]]]
+      ]
+    ],
+    "expected": {
+      "periodo.mese": 6,
+      "totali.competenze": 1640,
+      "totali.trattenute": 340,
+      "totali.netto": 1300,
+      "voci.length": 3
+    }
+  }
+]
