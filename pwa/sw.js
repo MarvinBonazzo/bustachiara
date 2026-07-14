@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v1';
+const CACHE = 'bustachiara-v2-foglio-illuminato';
 const ASSETS = [
   './',
   './index.html',
@@ -27,6 +27,7 @@ self.addEventListener('activate', (e) => {
    per scaricare eventuali aggiornamenti quando disponibile. */
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  const navigazione = e.request.mode === 'navigate';
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then((hit) => {
       if (hit) return hit;
@@ -36,7 +37,10 @@ self.addEventListener('fetch', (e) => {
           caches.open(CACHE).then((c) => c.put(e.request, copia));
         }
         return resp;
-      }).catch(() => caches.match('./index.html'));
+      }).catch((err) => {
+        if (navigazione) return caches.match('./index.html');
+        throw err;
+      });
     })
   );
 });

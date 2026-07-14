@@ -58,12 +58,31 @@ function applyModo() {
 function isSemplificato() { return Store.data.prefs.modo === 'semplificato'; }
 
 /* ---------- popover informativo ---------- */
+let focusBeforePopover = null;
 function openInfo(titolo, bodyHtml) {
+  focusBeforePopover = document.activeElement;
   $('#popover-title').textContent = titolo;
   $('#popover-body').innerHTML = bodyHtml;
   $('#popover').hidden = false;
+  document.body.classList.add('modal-open');
+  ['#topbar', '#tabs', 'main', 'footer'].forEach(s => {
+    const el = $(s); if (!el) return;
+    el.setAttribute('aria-hidden', 'true');
+    el.inert = true;
+  });
+  requestAnimationFrame(() => $('#popover-close').focus());
 }
-function closeInfo() { $('#popover').hidden = true; }
+function closeInfo() {
+  if ($('#popover').hidden) return;
+  $('#popover').hidden = true;
+  document.body.classList.remove('modal-open');
+  ['#topbar', '#tabs', 'main', 'footer'].forEach(s => {
+    const el = $(s); if (!el) return;
+    el.removeAttribute('aria-hidden');
+    el.inert = false;
+  });
+  if (focusBeforePopover && typeof focusBeforePopover.focus === 'function') focusBeforePopover.focus();
+}
 function iBtn(key) { return `<button class="ibtn" data-info="${esc(key)}" title="Cosa significa?" aria-label="Spiegazione di ${esc(key)}">i</button>`; }
 let detailVoci = []; // voci del record mostrato in Dettaglio, per i popup
 function vociInfoHtml(v) {
@@ -89,7 +108,12 @@ let draft = null; // { record, warnings } in verifica
 function showView(name) {
   $$('.view').forEach(v => v.classList.remove('active'));
   const el = $('#view-' + name); if (el) el.classList.add('active');
-  $$('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  $$('#tabs .tab').forEach(b => {
+    const active = b.dataset.view === name;
+    b.classList.toggle('active', active);
+    if (active) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
   window.scrollTo({ top: 0 });
 }
 $('#tabs').addEventListener('click', (e) => {
@@ -111,9 +135,14 @@ function renderImporta() {
   const conNetto = recs.filter(r => r.totali.netto != null);
   const media = conNetto.length ? conNetto.reduce((s, r) => s + r.totali.netto, 0) / conNetto.length : 0;
   const archivio = !recs.length ? `
-  <div class="card">
-    <h2>Cosa succede dopo</h2>
-    <p class="muted">1) Estraggo voci, totali, TFR, ferie e contratto → 2) tu verifichi e correggi → 3) l’app spiega ogni voce, esegue i controlli (IRPEF, INPS, TFR, ferie, minimi…) e archivia il mese qui sotto, solo su questo dispositivo.</p>
+  <div class="card steps-card">
+    <p class="eyebrow">COME FUNZIONA</p>
+    <h2>Dal documento alle risposte, in tre passi</h2>
+    <div class="steps">
+      <div class="step"><span>1</span><div><b>Leggo</b><p>Estraggo voci, totali, TFR, ferie e contratto dal tuo file.</p></div></div>
+      <div class="step"><span>2</span><div><b>Tu verifichi</b><p>Confermi o correggi i dati: resti sempre tu ad avere l’ultima parola.</p></div></div>
+      <div class="step"><span>3</span><div><b>Faccio chiarezza</b><p>Spiego le voci, rifaccio i conti e segnalo cosa merita attenzione.</p></div></div>
+    </div>
   </div>` : `
   <div class="kpis">
     <div class="kpi"><div class="v">${fmtEur(last.totali.netto)} €</div><div class="l">Ultimo netto (${esc(periodoLabel(last.periodo))}) ${iBtn('netto')}</div></div>
@@ -142,25 +171,34 @@ function renderImporta() {
     — Per fare un backup o portare i dati altrove: scheda <b>Altro → Esporta tutto</b> (scarica un file JSON, da custodire come un documento riservato) e poi <b>Importa backup</b> sull’altro dispositivo.</p>
   </div>`;
   $('#view-importa').innerHTML = `
-  <div class="card">
-    <h2>Importa una busta paga</h2>
-    <p class="muted">Il file viene letto <b>solo dentro questa pagina</b>: nessun caricamento, nessuna rete. Dopo l’estrazione ti mostro tutto per la conferma: <b>controlla sempre i valori</b> prima di salvare.</p>
-    <div id="dropzone">
-      <div class="dz-icon"></div>
-      <p><b>Trascina qui il PDF della busta paga</b><br>oppure tocca per scegliere un file<br><span class="muted small">PDF (anche scansionato) o foto/immagine — la lettura avviene sul dispositivo</span></p>
-      <input type="file" id="file-input" accept="application/pdf,image/*" hidden>
+  <div class="card import-hero">
+    <div class="hero-copy">
+      <p class="eyebrow">BUSTA PAGA CHIARA, DAVVERO</p>
+      <h2>Porta luce nei numeri del tuo stipendio.</h2>
+      <p>Importa la busta paga: BustaChiara traduce le voci, ricontrolla i calcoli e ti indica cosa approfondire, in parole comprensibili.</p>
+      <div class="trust-row" aria-label="Garanzie di privacy e funzionamento">
+        <span>🔒 Nessun caricamento</span><span>✈️ Funziona offline</span><span>✓ Verifica prima di salvare</span>
+      </div>
     </div>
-    <div id="import-status" style="display:none; margin-top:12px">
+    <div id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-help">
+      <div class="dz-icon"></div>
+      <p><b>Scegli la tua busta paga</b><br><span class="drop-secondary">oppure trascinala qui</span><br><span id="dropzone-help" class="muted small">PDF, scansione o foto · tutto viene letto su questo dispositivo</span></p>
+      <input type="file" id="file-input" accept="application/pdf,image/*" aria-label="Scegli un PDF o un'immagine della busta paga" hidden>
+    </div>
+    <div id="import-status" role="status" aria-live="polite" style="display:none; margin-top:12px">
       <p id="import-msg" class="muted"></p><progress id="import-bar" max="1" value="0"></progress>
     </div>
     <div class="btnrow">
       <button class="ghost" id="btn-manual">Inserimento manuale</button>
-      <button class="ghost" id="btn-demo">Prova con una busta di esempio</button>
+      <button class="demo-link" id="btn-demo">Prima voglio vedere un esempio →</button>
     </div>
   </div>
   ${archivio}`;
   const dz = $('#dropzone'), fi = $('#file-input');
   dz.addEventListener('click', () => fi.click());
+  dz.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fi.click(); }
+  });
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
@@ -180,10 +218,24 @@ function importStatus(msg, frac) {
 
 async function handleFile(file) {
   try {
+    if (file.size > 35 * 1024 * 1024) {
+      toast('Il file supera 35 MB: prova a ridurre la scansione o usare una foto più leggera.');
+      return;
+    }
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
       importStatus('Leggo il PDF…', 0.1);
       const buf = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      const task = pdfjsLib.getDocument({ data: buf });
+      // PDF protetti: chiediamo la password (resta sul dispositivo come tutto il resto)
+      task.onPassword = (updatePassword, reason) => {
+        const msg = reason === 2
+          ? 'Password sbagliata. Riprova:'
+          : 'Questo PDF è protetto da password.\nInseriscila per aprirlo (non viene salvata né inviata da nessuna parte):';
+        const pw = prompt(msg);
+        if (pw === null) { importStatus('Apertura annullata: PDF protetto.', 0); task.destroy(); return; }
+        updatePassword(pw);
+      };
+      const pdf = await task.promise;
       const pages = [];
       let chars = 0;
       for (let p = 1; p <= pdf.numPages; p++) {
@@ -201,21 +253,16 @@ async function handleFile(file) {
         startVerifica(record, warnings);
       } else {
         importStatus('PDF senza testo (scansione): avvio la lettura ottica locale…', 0.15);
-        let full = '';
-        for (let p = 1; p <= pdf.numPages; p++) {
-          const page = await pdf.getPage(p);
-          const canvas = await renderPage(page, 2.4);
-          full += await ocr(canvas, (m, f) => importStatus(`Lettura pagina ${p}/${pdf.numPages}: ${m}`, 0.15 + 0.8 * ((p - 1) + (f || 0)) / pdf.numPages)) + '\n';
-        }
-        const { record, warnings } = Parser.parseFreeText(full);
+        const canvases = [];
+        for (let p = 1; p <= pdf.numPages; p++) canvases.push(await renderPage(await pdf.getPage(p), 2.6));
+        const { record, warnings } = await parseDaOcr(canvases, (m, f) => importStatus('Lettura ottica: ' + m, 0.15 + 0.8 * (f || 0)));
         record.meta.fileName = file.name;
         startVerifica(record, warnings);
       }
     } else if (/^image\//.test(file.type)) {
       importStatus('Preparo l’immagine…', 0.1);
       const canvas = await imageToCanvas(file);
-      const text = await ocr(canvas, (m, f) => importStatus('Lettura ottica: ' + m, 0.1 + 0.85 * (f || 0)));
-      const { record, warnings } = Parser.parseFreeText(text);
+      const { record, warnings } = await parseDaOcr([canvas], (m, f) => importStatus('Lettura ottica: ' + m, 0.1 + 0.85 * (f || 0)));
       record.meta.fileName = file.name;
       startVerifica(record, warnings);
     } else {
@@ -238,8 +285,10 @@ function imageToCanvas(file) {
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 2400;
-      const k = Math.min(1, MAX / Math.max(img.width, img.height)) * (Math.max(img.width, img.height) < 1200 ? 2 : 1);
+      // gli screenshot vanno ingranditi: il testo piccolo è il primo motivo di letture fallite
+      const TARGET = 2400, MAX = 3400;
+      let k = TARGET / Math.max(img.width, 1);
+      k = Math.max(k, 1); k = Math.min(k, 3, MAX / Math.max(img.width, img.height));
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       const ctx = c.getContext('2d');
@@ -280,18 +329,126 @@ async function getOcrWorker(status) {
       langPath: 'embedded://tessdata', cacheMethod: 'none', gzip: true,
       logger: m => { if (status && m.status) status(m.status, m.progress); },
     });
-    await worker.setParameters({ preserve_interword_spaces: '1' });
+    await worker.setParameters({ preserve_interword_spaces: '1', user_defined_dpi: '300' });
     OCR.worker = worker;
     return worker;
   })();
   return OCR.initing;
 }
-async function ocr(canvas, status) {
+async function ocrData(canvas, status) {
   const worker = await getOcrWorker(status);
   status && status('riconosco il testo…', 0.5);
   const { data } = await worker.recognize(canvas.toDataURL('image/png'));
   status && status('fatto', 1);
-  return data.text || '';
+  return data;
+}
+async function ocr(canvas, status) { return (await ocrData(canvas, status)).text || ''; }
+
+/* Converte le parole OCR (con coordinate) negli "item" usati dal parser dei PDF,
+   unendo le parole vicine non numeriche (es. "IMPORTO"+"BASE" → "IMPORTO BASE"). */
+const OCR_NUM_RE = /^\(?-?\d{1,3}(\.\d{3})*(,\d+)?\)?%?€?$/;
+function ocrToItems(data, canvas) {
+  const canvasH = canvas.height;
+  // coordinate riportate alla scala tipica dei PDF (~600 pt di larghezza),
+  // così le tolleranze del parser valgono anche per screenshot e foto
+  const K = 600 / Math.max(canvas.width, 1);
+  const rumore = (s, bw, bh) => {
+    if (bw < bh * 0.45 && s.length >= 2) return true;               // testo verticale dei margini
+    if (s.length <= 2 && !/^(\d{1,2}|%|€|GG|gg\.?|h|N\.?)$/i.test(s)) return true; // frammenti tipo "im]"
+    if (!/[0-9A-Za-zÀ-ù€%]/.test(s)) return true;                    // sola punteggiatura
+    const punct = (s.match(/[^0-9A-Za-zÀ-ù]/g) || []).length;
+    if (s.length <= 4 && punct >= Math.ceil(s.length / 3) && !/^\d|^F\.do$/i.test(s)) return true;
+    return false;
+  };
+  const words = (data.words || [])
+    .filter(w => w.text && w.text.trim() && (w.confidence == null || w.confidence > 30))
+    .map(w => ({ str: w.text.trim(), x0: w.bbox.x0, x1: w.bbox.x1, yc: (w.bbox.y0 + w.bbox.y1) / 2, h: w.bbox.y1 - w.bbox.y0 }))
+    .filter(w => !rumore(w.str, w.x1 - w.x0, w.h));
+  words.sort((a, b) => a.yc - b.yc || a.x0 - b.x0);
+  // raggruppa per riga
+  const righe = [];
+  for (const w of words) {
+    let r = righe.find(rr => Math.abs(rr.yc - w.yc) < Math.max(8, w.h * 0.6));
+    if (!r) { r = { yc: w.yc, ws: [] }; righe.push(r); }
+    r.ws.push(w);
+  }
+  const items = [];
+  const isCodice = s => /^[A-Z0-9]{5,6}$/.test(s) && /\d/.test(s);
+  for (const r of righe) {
+    r.ws.sort((a, b) => a.x0 - b.x0);
+    const y = (canvasH - r.yc) * K;   // stessa y per tutte le celle della riga
+    let cur = null;
+    const chiudi = () => { if (cur) items.push({ str: cur.str, x: cur.x0 * K, y, w: (cur.x1 - cur.x0) * K }); };
+    for (const w of r.ws) {
+      const testo = w.str;
+      const numerico = OCR_NUM_RE.test(testo);
+      if (cur && !cur.numerico && !numerico && !isCodice(testo) && !isCodice(cur.str.split(' ')[0]) &&
+          (w.x0 - cur.x1) < Math.max(14, cur.h * 0.9)) {
+        cur.str += ' ' + testo; cur.x1 = w.x1;
+      } else {
+        chiudi();
+        cur = { str: testo, x0: w.x0, x1: w.x1, h: w.h, numerico };
+      }
+    }
+    chiudi();
+  }
+  return items;
+}
+/* Doppio tentativo: parser a coordinate (come per i PDF) + parser testuale;
+   vince quello che estrae di più e l'altro riempie i buchi. */
+function scoreEstrazione(r) {
+  let s = r.voci.length * 2;
+  s += r.voci.filter(v => v.codice).length;            // struttura riconosciuta
+  s += r.voci.filter(v => v.base != null && (v.competenza != null || v.trattenuta != null)).length;
+  const t = r.totali || {};
+  for (const k of ['competenze', 'trattenute', 'netto']) if (t[k] != null) s += 3;
+  if (r.periodo) s += 2;
+  if (r.derivati && r.derivati.imponibileIrpef != null) s += 2;
+  if (r.tfr && r.tfr.quotaMese != null) s += 2;
+  if (r.ratei && r.ratei.ferie) s += 2;
+  if (r.ccnl && r.ccnl.cnel) s += 2;
+  return s;
+}
+const CAMPI_SCALARI = ['periodo', 'azienda.nome', 'azienda.cf', 'dipendente.nome', 'dipendente.cf', 'dipendente.livello', 'dipendente.qualifica', 'dipendente.dataAssunzione', 'ccnl.cnel', 'ccnl.descrizione', 'elementi.pagaBase', 'elementi.superminimo', 'elementi.contingenza', 'elementi.totale', 'orario.oreOrdinarie', 'totali.competenze', 'totali.trattenute', 'totali.arrotondamento', 'totali.netto', 'tfr.retribUtile', 'tfr.quotaMese', 'tfr.fondo3112', 'tfr.quotaAnno', 'tfr.rivalutazione', 'tfr.aFondi', 'progressivi.impInps', 'progressivi.impIrpef', 'progressivi.irpefPagata', 'ratei.ferie', 'ratei.permessi'];
+function unisciEstrazioni(a, b) {
+  const [base, altro] = scoreEstrazione(a.record) >= scoreEstrazione(b.record) ? [a, b] : [b, a];
+  for (const p of CAMPI_SCALARI) {
+    if (getPath(base.record, p) == null) {
+      const v = getPath(altro.record, p);
+      if (v != null) setPath(base.record, p, v);
+    }
+  }
+  if (!base.record.voci.length && altro.record.voci.length) base.record.voci = altro.record.voci;
+  base.record.derivati = Parser.derivaIndice(base.record);
+  base.record.meta.fonte = 'ocr';
+  base.warnings = [...new Set([...(base.warnings || []), ...(altro.warnings || [])])];
+  return base;
+}
+/* Pipeline completa: una o più immagini → record da verificare. */
+async function parseDaOcr(canvases, status) {
+  const pagineItems = [];
+  let testo = '';
+  for (let i = 0; i < canvases.length; i++) {
+    const data = await ocrData(canvases[i], (m, f) => status && status(`${canvases.length > 1 ? 'pagina ' + (i + 1) + '/' + canvases.length + ': ' : ''}${m}`, ((i + (f || 0)) / canvases.length)));
+    const items = ocrToItems(data, canvases[i]);
+    pagineItems.push(items);
+    // testo ricostruito dalle parole già ripulite dal rumore, riga per riga
+    const perRiga = new Map();
+    for (const it of items) {
+      const k = Math.round(it.y / 3);
+      if (!perRiga.has(k)) perRiga.set(k, []);
+      perRiga.get(k).push(it);
+    }
+    testo += [...perRiga.entries()].sort((a, b) => b[0] - a[0])
+      .map(([, cs]) => cs.sort((a, b) => a.x - b.x).map(c => c.str).join(' ')).join('\n') + '\n';
+  }
+  const daCoordinate = Parser.parsePdfPages(pagineItems);
+  daCoordinate.record.meta.fonte = 'ocr';
+  const daTesto = Parser.parseFreeText(testo);
+  const esito = unisciEstrazioni(daCoordinate, daTesto);
+  esito.warnings = ['Lettura ottica (OCR): i numeri possono contenere errori di lettura, controlla TUTTI i campi prima di salvare.',
+    ...esito.warnings.filter(w => !/precisione limitata/.test(w))];
+  return esito;
 }
 
 /* ============================================================
@@ -546,7 +703,7 @@ function renderDettaglioSemplice(el, r, ccnl, findings) {
   <div class="card">
     <h2>La tua busta di ${esc(periodoLabel(r.periodo))}</h2>
     <div class="netto-big">${fmtEur(t.netto)} €</div>
-    <p>Questo è il <b>netto</b>${iBtn('netto')}: quello che ti arriva davvero. In totale ti sono stati riconosciuti <b>${fmtEur(t.competenze)} €</b> di competenze${iBtn('competenza')}, e ne sono stati trattenuti <b>${fmtEur(t.trattenute)} €</b>${iBtn('trattenuta')} tra tasse e contributi.</p>
+    <p>Questi sono i soldi arrivati sul tuo conto (il <b>netto</b>${iBtn('netto')}). Lo stipendio di partenza era <b>${fmtEur(t.competenze)} €</b>${iBtn('competenza')}; da lì sono stati tolti <b>${fmtEur(t.trattenute)} €</b>${iBtn('trattenuta')} tra tasse, contributi per la pensione e piccole quote. Per vedere dove vanno i tuoi soldi, tocca <b>Riassunto</b> in alto.</p>
     ${r.ratei && r.ratei.ferie ? `<p class="muted">Ferie ancora da usare: <b>${fmtEur(r.ratei.ferie.saldo, 1)} giorni</b>${iBtn('ferie')} · Permessi: <b>${fmtEur(r.ratei.permessi ? r.ratei.permessi.saldo : 0, 1)} ore</b>${iBtn('rol')}</p>` : ''}
     <div class="btnrow"><button class="ghost" id="btn-edit">Modifica dati</button></div>
   </div>
@@ -836,7 +993,7 @@ function renderImpostazioni() {
     <div class="btnrow">
       <button class="primary" id="btn-export">Esporta tutto (JSON)</button>
       <button class="ghost" id="btn-import-json">Importa backup</button>
-      <input type="file" id="json-input" accept="application/json" hidden>
+      <input type="file" id="json-input" accept="application/json" aria-label="Scegli un backup JSON di BustaChiara" hidden>
       <button class="danger" id="btn-wipe">Cancella tutti i dati</button>
     </div>
     <p class="muted small">L’export contiene le buste in chiaro: trattalo come un documento riservato.</p>
@@ -960,7 +1117,7 @@ function demoRecord() {
    ============================================================ */
 function apriRiassunto() {
   const r = Store.data.records.find(x => x.id === currentDetailId) || recSorted().slice(-1)[0];
-  if (!r) { openInfo('Il tuo mese in breve', '<p>Non c’è ancora nessuna busta archiviata: importane una (scheda Importa) e qui troverai il tuo mese spiegato in poche righe semplici.</p>'); return; }
+  if (!r) { openInfo('Il tuo mese in breve', '<p>Non c’è ancora nessuna busta salvata. Vai su Importa, carica la tua busta paga e qui troverai il riassunto del mese in poche righe semplici.</p>'); return; }
   const t = r.totali || {};
   let contributi = 0, tasse = 0, altre = 0;
   for (const v of r.voci) {
@@ -973,24 +1130,66 @@ function apriRiassunto() {
   const ccnl = r.ccnlId ? ccnlById(r.ccnlId) : null;
   const anomalie = eseguiControlli(r, ccnl, Store.data.records).filter(f => f.livello === 'alert').length;
   const p = [];
-  if (t.competenze != null) p.push(`Questo mese hai guadagnato <b>${fmtEur(t.competenze)} €</b> “lordi”, cioè prima che venissero tolte tasse e contributi.`);
-  if (t.trattenute != null) {
-    const parti = [];
-    if (contributi) parti.push(`<b>${fmtEur(contributi)} €</b> messi via per la tua futura pensione e le tutele (INPS)`);
-    if (tasse) parti.push(`<b>${fmtEur(tasse)} €</b> di tasse`);
-    if (altre) parti.push(`<b>${fmtEur(altre)} €</b> di piccole quote (assicurazione sanitaria di settore e simili)`);
-    p.push(`Ti sono stati tolti <b>${fmtEur(t.trattenute)} €</b>${parti.length ? ', così divisi: ' + parti.join(', ') + '.' : '.'}`);
+  if (t.competenze != null) p.push(`Il tuo stipendio di partenza questo mese era di <b>${fmtEur(t.competenze)} €</b>. È la cifra piena, prima di togliere qualsiasi cosa.`);
+  // barra: dove vanno i tuoi soldi
+  if (t.competenze && t.netto != null) {
+    const tot = t.competenze;
+    const seg = [
+      { cls: 'soldi-netto', val: t.netto, nome: 'A te (netto)' },
+      { cls: 'soldi-contributi', val: contributi, nome: 'Pensione e tutele (INPS)' },
+      { cls: 'soldi-tasse', val: tasse, nome: 'Tasse' },
+      { cls: 'soldi-altre', val: altre, nome: 'Piccole quote' },
+    ].filter(s => s.val > 0);
+    const colori = { 'soldi-netto': 'var(--brand)', 'soldi-contributi': '#e08a2e', 'soldi-tasse': '#d0342c', 'soldi-altre': '#b9b9c0' };
+    p.push(`<b>Dove vanno i tuoi soldi:</b>
+      <div class="soldi-bar">${seg.map(s => `<div class="${s.cls}" style="width:${(s.val / tot * 100).toFixed(1)}%" title="${esc(s.nome)}: ${fmtEur(s.val)} €"></div>`).join('')}</div>
+      <span class="soldi-legenda">${seg.map(s => `<span><span class="dot" style="background:${colori[s.cls]}"></span>${esc(s.nome)}: <b>${fmtEur(s.val)} €</b> (${fmtEur(s.val / tot * 100, 0)}%)</span>`).join('')}</span>`);
   }
-  if (t.netto != null) p.push(`Quello che ti è arrivato davvero è il netto: <b>${fmtEur(t.netto)} €</b>.`);
-  if (r.ratei && r.ratei.ferie) p.push(`Hai ancora <b>${fmtEur(r.ratei.ferie.saldo, 1)} giorni di ferie</b>${r.ratei.permessi ? ` e <b>${fmtEur(r.ratei.permessi.saldo, 1)} ore di permessi</b>` : ''} da usare: sono riposo già pagato.`);
+  if (t.trattenute != null) p.push(`In tutto sono stati tolti <b>${fmtEur(t.trattenute)} €</b>: una parte va messa da parte per la tua futura pensione, una parte sono tasse, e pochi euro sono piccole quote (per esempio l’assicurazione sanitaria del tuo contratto).`);
+  if (t.netto != null) p.push(`Sul conto ti sono arrivati <b>${fmtEur(t.netto)} €</b>: questo è il famoso “netto”.`);
+  if (r.ratei && r.ratei.ferie) p.push(`Hai ancora <b>${fmtEur(r.ratei.ferie.saldo, 1)} giorni di ferie</b>${r.ratei.permessi ? ` e <b>${fmtEur(r.ratei.permessi.saldo, 1)} ore di permessi</b>` : ''} da usare. Sono giorni e ore pagate: usarle non ti costa nulla.`);
   if (r.tfr && (r.tfr.fondo3112 != null || r.tfr.quotaAnno != null)) {
     const tot = (r.tfr.fondo3112 || 0) + (r.tfr.quotaAnno || 0);
-    p.push(`In più, c’è la tua “liquidazione” (il TFR): finora vale circa <b>${fmtEur(tot, 0)} €</b>${r.tfr.aFondi ? ', versata a un fondo pensione' : ', messa da parte dall’azienda'}. La ricevi quando il rapporto di lavoro finisce${r.tfr.aFondi ? ' (o alla pensione, essendo in un fondo)' : ''}.`);
+    p.push(`C’è anche un salvadanaio che non vedi in busta: la liquidazione (TFR). Finora dentro ci sono circa <b>${fmtEur(tot, 0)} €</b>${r.tfr.aFondi ? ', custoditi in un fondo pensione' : ', custoditi dall’azienda'}. Li ricevi quando cambi lavoro o vai in pensione.`);
   }
   p.push(anomalie
-    ? `<b>Attenzione:</b> ${anomalie === 1 ? 'c’è 1 cosa che non torna' : 'ci sono ' + anomalie + ' cose che non tornano'} in questa busta: la trovi spiegata in cima alla scheda Dettaglio.`
-    : `I conti di questa busta tornano: i controlli automatici non hanno trovato anomalie.`);
+    ? `<b>Attenzione:</b> ${anomalie === 1 ? 'c’è una cosa che non torna' : 'ci sono ' + anomalie + ' cose che non tornano'} in questa busta. Aprila nella scheda Dettaglio: la spiegazione è in cima.`
+    : `Buone notizie: i conti di questa busta tornano. I controlli automatici non hanno trovato niente di strano.`);
   openInfo(`Il tuo mese in breve — ${periodoLabel(r.periodo)}`, p.map(x => `<p>${x}</p>`).join(''));
+}
+
+/* ============================================================
+   INSTALLAZIONE PWA
+   ============================================================ */
+let installPromptEvent = null;
+const inStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+function aggiornaPulsanteInstallazione() {
+  const b = $('#install-btn');
+  if (!b) return;
+  const servitaDalWeb = location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname);
+  b.hidden = !servitaDalWeb || inStandalone();
+}
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPromptEvent = e;
+  aggiornaPulsanteInstallazione();
+});
+window.addEventListener('appinstalled', () => {
+  installPromptEvent = null;
+  aggiornaPulsanteInstallazione();
+  toast('BustaChiara è installata e pronta anche offline.');
+});
+async function installaApp() {
+  if (installPromptEvent) {
+    await installPromptEvent.prompt();
+    installPromptEvent = null;
+    aggiornaPulsanteInstallazione();
+    return;
+  }
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  openInfo('Installa BustaChiara', ios
+    ? '<p>In Safari tocca <b>Condividi</b> e poi <b>Aggiungi alla schermata Home</b>. Da lì BustaChiara si apre come un’app e continua a funzionare offline.</p>'
+    : '<p>Apri il menu del browser e scegli <b>Installa app</b> oppure <b>Aggiungi alla schermata Home</b>. Dopo la prima apertura, BustaChiara funziona anche senza connessione.</p>');
 }
 
 /* ============================================================
@@ -1009,17 +1208,20 @@ function apriRiassunto() {
   // controlli barra superiore
   $('#riassunto-btn').addEventListener('click', apriRiassunto);
   $('#progetto-btn').addEventListener('click', () => showView('progetto'));
+  $('#install-btn').addEventListener('click', installaApp);
+  $('#privacy-badge').addEventListener('click', () => openInfo('I tuoi dati non escono da qui', '<p>PDF, foto e numeri vengono elaborati <b>interamente su questo dispositivo</b>. Non c’è un account e non c’è un server a cui inviare la busta paga.</p><p>La protezione non è solo una promessa: la pagina usa una regola di sicurezza del browser che blocca le connessioni esterne durante l’analisi.</p><p class="muted small">La cronologia resta nella memoria di questo browser. Per non perderla quando cancelli i dati di navigazione, crea periodicamente un backup dalla sezione Altro.</p>'));
+  aggiornaPulsanteInstallazione();
   $('#modo-seg').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-modo]'); if (!b) return;
-    if (Store.data.prefs.modo === b.dataset.modo) return;
+    const giaAttiva = Store.data.prefs.modo === b.dataset.modo;
     Store.data.prefs.modo = b.dataset.modo;
     Store.save(); applyModo();
     // ridisegna le viste dipendenti dalla modalità
     renderConsigli();
-    if ($('#view-dettaglio').classList.contains('active') || isSemplificato()) {
-      renderDettaglio(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
-      if (isSemplificato() && Store.data.records.length) showView('dettaglio');
-    }
+    renderDettaglio(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
+    // cliccare una modalità riporta sempre alla vista principale
+    showView(Store.data.records.length ? 'dettaglio' : 'importa');
+    if (giaAttiva) return;
     toast(b.dataset.modo === 'semplificato' ? 'Modalità Semplificato: solo l’essenziale, in parole semplici.' : 'Modalità Dettagliato: calcoli, controlli e confronto col CCNL.');
   });
 
@@ -1042,7 +1244,16 @@ function apriRiassunto() {
   });
   $('#popover-close').addEventListener('click', closeInfo);
   $('#popover-backdrop').addEventListener('click', closeInfo);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeInfo(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeInfo();
+    if (e.key === 'Tab' && !$('#popover').hidden) {
+      const focusabili = $$('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])', $('#popover-card')).filter(x => !x.disabled);
+      if (!focusabili.length) return;
+      const first = focusabili[0], last = focusabili[focusabili.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
 
   try {
     if (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname)) {
@@ -1050,7 +1261,19 @@ function apriRiassunto() {
       // (nel file singolo aperto con doppio clic non servono e darebbero solo warning)
       const lm = document.createElement('link'); lm.rel = 'manifest'; lm.href = 'manifest.webmanifest'; document.head.appendChild(lm);
       const li = document.createElement('link'); li.rel = 'apple-touch-icon'; li.href = 'icons/apple-touch-icon.png'; document.head.appendChild(li);
-      if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => { /* senza sw.js accanto: nessun problema */ });
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').then(reg => {
+          reg.addEventListener('updatefound', () => {
+            const worker = reg.installing;
+            if (!worker) return;
+            worker.addEventListener('statechange', () => {
+              if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                toast('È disponibile una versione più recente. Si attiverà alla prossima apertura.');
+              }
+            });
+          });
+        }).catch(() => { /* senza sw.js accanto: nessun problema */ });
+      }
     }
   } catch (e) { /* ambienti senza service worker */ }
   renderImporta(); renderConsigli(); renderGuida(); renderProgetto(); renderImpostazioni();

@@ -177,21 +177,72 @@ function parsePdfPages(pages) {
   if (lav) rec.orario.oreOrdinarie = itNum(lav[1]);
 
   /* ---- Tabella VOCI ---- */
+  const CODE_RE = /^[A-Z0-9]{5,6}$/;
+  const isCodeCell = c => CODE_RE.test(c.str) && /\d/.test(c.str);
+  const UNIT_RE = /^(ORE|GG\.?|%|NR\.?|H)$/i;
   for (const lines of allLines) {
-    const hi = findLine(lines, L('VOCI', 'VARIABILI'));
-    if (hi < 0) continue;
-    // centri colonna dalle intestazioni
+    let hi = findLine(lines, L('VOCI', 'VARIABILI'));
     const heads = {};
-    for (const c of lines[hi].cells) {
-      if (L('IMPORTO', 'BASE').test(c.str)) heads.base = cellCenter(c);
-      else if (/RIFERIMENTO/i.test(c.str)) heads.rif = cellCenter(c);
-      else if (/TRATTENUTE/i.test(c.str)) heads.tratt = cellCenter(c);
-      else if (/COMPETENZE/i.test(c.str)) heads.comp = cellCenter(c);
-      else if (L('VOCI', 'VARIABILI').test(c.str)) heads.desc = cellCenter(c);
+    if (hi >= 0) {
+      for (const c of lines[hi].cells) {
+        if (L('IMPORTO', 'BASE').test(c.str)) heads.base = cellCenter(c);
+        else if (/RIFERIMENTO/i.test(c.str)) heads.rif = cellCenter(c);
+        else if (/TRATTENUTE/i.test(c.str)) heads.tratt = cellCenter(c);
+        else if (/COMPETENZE/i.test(c.str)) heads.comp = cellCenter(c);
+        else if (L('VOCI', 'VARIABILI').test(c.str)) heads.desc = cellCenter(c);
+      }
     }
+    // Fallback (essenziale per gli screenshot): se l'intestazione manca o è
+    // incompleta, ricava i centri colonna dai numeri delle righe con codice,
+    // usando le unità (ORE/GG/%) come ancora della colonna "riferimento".
+    const primaRigaCodice = (() => {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].cells.some(isCodeCell) && lines[i].cells.some(c => NUM_RE.test(c.str))) return i;
+      }
+      return -1;
+    })();
+    if ((hi < 0 || heads.base == null || heads.comp == null) && primaRigaCodice >= 0) {
+      if (hi < 0) hi = primaRigaCodice - 1;
+      const centri = [], unita = [];
+      for (let i = primaRigaCodice; i < lines.length; i++) {
+        if (!lines[i].cells.some(isCodeCell)) continue;
+        for (const c of lines[i].cells) {
+          if (NUM_RE.test(c.str)) centri.push(cellCenter(c));
+          else if (UNIT_RE.test(c.str)) unita.push(cellCenter(c));
+        }
+      }
+      centri.sort((a, b) => a - b);
+      const cluster = [];
+      for (const x of centri) {
+        const ult = cluster[cluster.length - 1];
+        if (ult && x - ult.max < 30) { ult.sum += x; ult.n++; ult.max = x; }
+        else cluster.push({ sum: x, n: 1, max: x });
+      }
+      const cs = cluster.filter(c => c.n >= 2).map(c => c.sum / c.n);
+      if (cs.length >= 2) {
+        let rifIdx = -1;
+        if (unita.length) {
+          const um = unita.reduce((a, b) => a + b, 0) / unita.length;
+          let best = 1e9;
+          cs.forEach((x, i) => { const d = um - x; if (d > -12 && d < best) { best = d; rifIdx = i; } });
+        }
+        if (heads.comp == null) heads.comp = cs[cs.length - 1];
+        if (rifIdx >= 0) {
+          if (heads.rif == null) heads.rif = cs[rifIdx];
+          if (heads.base == null && rifIdx >= 1) heads.base = cs[rifIdx - 1];
+          if (heads.tratt == null) for (let i = rifIdx + 1; i < cs.length - 1; i++) { heads.tratt = cs[i]; break; }
+        } else if (cs.length >= 4) {
+          if (heads.base == null) heads.base = cs[0];
+          if (heads.rif == null) heads.rif = cs[1];
+          if (heads.tratt == null) heads.tratt = cs[2];
+        } else if (heads.base == null) heads.base = cs[0];
+        if (heads.desc == null && heads.base != null) heads.desc = Math.max(0, heads.base - 150);
+      }
+    }
+    if (hi < 0 && heads.base == null && heads.comp == null) continue;
     if (heads.comp == null || heads.base == null) { warnings.push('Intestazioni della tabella voci non riconosciute: controlla le voci estratte.'); }
     const stopRe = /^(CONGUAGLIO|PROGRESSIVI|T\.?F\.?R\.?|RATEI|COMUNICAZIONI)\b/i;
-    for (let li = hi + 1; li < lines.length; li++) {
+    for (let li = Math.max(0, hi + 1); li < lines.length; li++) {
       const ln = lines[li];
       if (stopRe.test(ln.text.replace(/[\ss]+/g, ' ').trim()) && ln.cells.length <= 2) break;
       const cells = ln.cells.filter(c => c.str !== '*' && !/^\*+$/.test(c.str));
@@ -202,7 +253,7 @@ function parsePdfPages(pages) {
       if (/^quota\s+t\.?f\.?r/i.test(flat.trim())) { rec.tfr.quotaMese = firstNum(cells); continue; }
       if (/imp\.?\s*inail/i.test(flat)) { rec.orario.impInail = firstNum(cells); continue; }
 
-      const codeCell = cells.find(c => /^[A-Z0-9]{5,6}$/.test(c.str) && (heads.base == null || cellCenter(c) < heads.base - 60));
+      const codeCell = cells.find(c => isCodeCell(c) && (heads.base == null || cellCenter(c) < heads.base - 60));
       if (!codeCell) continue;
       const cleanCells = cells.filter(c => !/^[()]+$/.test(c.str));
       const voce = { codice: codeCell.str, descrizione: '', base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null, cDitta: false };
@@ -214,9 +265,11 @@ function parsePdfPages(pages) {
         const zone = nearestZone(cc, heads);
         if (!isNum) {
           if (/^C\/?Ditta$/i.test(c.str)) { voce.cDitta = true; continue; }
-          if (/^(ORE|GG\.?|%|NR\.?|H)$/i.test(c.str)) { voce.rifUnita = c.str.replace('.', ''); continue; }
+          if (UNIT_RE.test(c.str)) { voce.rifUnita = c.str.replace('.', ''); continue; }
           if (zone === 'rif' || zone === 'tratt') { rifText.push(c.str); continue; }
-          descParts.push(c.str); continue;
+          if (cc < (heads.base != null ? heads.base - 40 : 1e9)) descParts.push(c.str);
+          else rifText.push(c.str);
+          continue;
         }
         const v = itNum(c.str);
         if (zone === 'base') voce.base = v;
@@ -386,11 +439,19 @@ function parseFreeText(text) {
     if (line.length < 8) continue;
     const nums = (line.match(NUM_ANY_RE) || []).map(itNum).filter(v => v != null);
     if (!nums.length) continue;
-    const descr = line.replace(NUM_ANY_RE, ' ').replace(/[|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    let descr = line.replace(NUM_ANY_RE, ' ').replace(/[|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
     if (descr.length < 3 || /totale|netto|imponibile\s*$/i.test(descr)) continue;
     if (!/[a-zà-ù]/i.test(descr)) continue;
+    // righe di intestazione/elementi fissi: non sono voci
+    if (/paga base|sup\.?\s*ass|contingenza|elementi della|settimane|minimale|voci variabili|riferimento|competenze\s+trattenute|codice fiscale|cognome/i.test(descr)) continue;
+    if (descr.replace(/[^A-Za-zÀ-ù]/g, '').length < 4) continue;
+    // codice voce a inizio riga (es. Z00001, 003500, F02010)
+    let codice = '';
+    const mc = descr.match(/^\W{0,3}([A-Z0-9]{5,6})\s+(?=[A-Za-zÀ-ù])/);
+    if (mc && /\d/.test(mc[1])) { codice = mc[1]; descr = descr.slice(mc.index + mc[0].length); }
+    descr = descr.replace(/^[^A-Za-zÀ-ù]{1,4}\s*/, '').replace(/\s*(ORE|GG\.?|%)\s*$/i, '').trim();
     const isTratt = /(irpef|contribut|trattenut|addizionale|sindac|cession|f\.a\.p|ivs|fis\b)/i.test(descr);
-    const voce = { codice: '', descrizione: descr.slice(0, 60), base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null };
+    const voce = { codice, descrizione: descr.slice(0, 60), base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null };
     if (nums.length === 1) { if (isTratt) voce.trattenuta = nums[0]; else voce.competenza = nums[0]; }
     else if (nums.length === 2) { voce.base = nums[0]; if (isTratt) voce.trattenuta = nums[1]; else voce.competenza = nums[1]; }
     else { voce.base = nums[0]; voce.rifQta = nums[1]; if (isTratt) voce.trattenuta = nums[nums.length - 1]; else voce.competenza = nums[nums.length - 1]; }
