@@ -13,7 +13,7 @@ mai inviato da nessuna parte — non a un server, non a un'AI, non a nessuno.
 
 ### Link pubblico dell’app
 
-**[Apri BustaChiara](https://shivenbonazzo.github.io/bustachiara/)**
+**[Apri BustaChiara](https://MarvinBonazzo.github.io/bustachiara/)**
 
 Per condividerla con altre persone basta inviare questo link. Non occorre cercare l’app su
 App Store o Play Store: BustaChiara è una **PWA**, cioè un sito sicuro che si installa
