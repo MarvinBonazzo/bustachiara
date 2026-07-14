@@ -719,6 +719,7 @@ function extractContributionTables(rec, allLines) {
           rifUnita: values.length >= 3 ? '%' : '',
           trattenuta: values[values.length - 1],
           competenza: null,
+          meta: { source: 'coordinate', confidence: .84, visual: visualEvidence(lines[i]) },
         });
       }
     }
@@ -743,6 +744,7 @@ function extractFiscalSummary(rec, allLines) {
           if (value == null) continue;
           const voice = { codice: def.code, descrizione: def.description, base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null };
           voice[def.field] = value;
+          voice.meta = { source: 'coordinate', confidence: .82, visual: visualEvidence(lines[i]) };
           addSyntheticVoice(rec, voice);
         }
       }

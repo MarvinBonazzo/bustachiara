@@ -75,7 +75,7 @@ codice e genera `src/cnel-index.js`. Al 14 luglio 2026 l'indice contiene 2.260 d
 ## Come aggiungere un nuovo formato
 
 1. Non allegare il cedolino reale a una Issue pubblica.
-2. In **Altro**, aprire il controllo privacy ed esportare il fixture: identità, estratti
+2. In **Backup**, aprire il controllo privacy ed esportare il fixture: identità, estratti
    testuali e importi originali vengono rimossi o trasformati. Ricontrollare comunque le
    causali proprietarie prima di condividerlo.
 3. Ridurre il caso alla minima struttura che riproduce l'errore.

@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v7-verifica-visuale';
+const CACHE = 'bustachiara-v8-navigazione-evidenze';
 const ASSETS = [
   './',
   './index.html',

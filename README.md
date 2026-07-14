@@ -59,35 +59,30 @@ desktop è consigliato Chrome o Edge.
 - Dopo il primo caricamento l’app funziona anche **offline**.
 - Gli aggiornamenti arrivano automaticamente quando viene pubblicata una nuova versione.
 - I dati restano nel browser del singolo dispositivo e non si sincronizzano: usa
-  **Altro → Esporta tutto** per fare un backup o trasferirli.
+  **Backup → Esporta tutto** per fare un backup o trasferirli.
 
 Le stesse istruzioni sono sempre disponibili dentro l’app tramite il pulsante **Installa**.
 
 ---
 
 > ⚠️ I dati (cronologia) sono salvati nel browser **del dispositivo che usi**: non si
-> sincronizzano da soli tra dispositivi. Usa **⚙️ Altro → Esporta** per fare backup o
+> sincronizzano da soli tra dispositivi. Usa **Backup → Esporta tutto** per fare backup o
 > passare i dati a un altro dispositivo.
 
-### Due modalità (pulsanti in alto)
-- **Dettagliato**: analisi completa — voci spiegate, elementi fissi, TFR, ferie/permessi,
-  progressivi, confronto col CCNL e, in fondo, la tendina "Informazioni generali" con tutti
-  i controlli automatici (formule incluse).
-- **Semplificato**: pensato per chi è al primo impiego — solo netto, voci in parole povere
-  (verde = ricevi, rosso = trattenuto) e consigli semplici. Restano le schede Importa,
-  Dettaglio, Guida e fonti e Curiosità.
+L’analisi è unica e completa: voci spiegate, elementi fissi, TFR, ferie/permessi,
+progressivi, confronto col CCNL e controlli automatici con formule.
 
 Ovunque trovi una **"i"**: toccala e si apre la spiegazione in parole semplici di quel
 termine o di quella voce (competenza, trattenuta, imponibile, TFR, rateo…). Il dizionario
-completo è nella scheda "Guida e fonti".
+completo è nella scheda **Extra**.
 
-Il pulsante **Riassunto** (in alto) racconta il mese in poche righe senza tecnicismi:
+Il pulsante **Riassunto**, accanto a Dettaglio, racconta il mese in poche righe senza tecnicismi:
 quanto hai guadagnato lordo, cosa ti è stato tolto e per cosa (pensione, tasse, piccole
 quote), il netto arrivato, le ferie e i permessi rimasti, il TFR messo da parte, e se i
 controlli hanno trovato qualcosa che non torna.
 
 ### Flusso tipico
-1. **Importa** → trascina il PDF della busta (anche **protetto da password**: viene chiesta
+1. **Home** → trascina il PDF della busta (anche **protetto da password**: viene chiesta
    al momento e non lasciata da nessuna parte), oppure **uno screenshot o una foto**: la
    lettura ottica locale ricostruisce la tabella delle voci usando le coordinate delle
    parole, quindi anche da un'immagine l'estrazione è quasi completa.
@@ -98,10 +93,11 @@ controlli hanno trovato qualcosa che non torna.
    spiegate una per una, gli elementi fissi, il TFR, ferie/permessi, il contratto e in fondo
    la tendina "Informazioni generali" con tutti i controlli. Ogni sezione è richiudibile
    (aperte di default).
-4. **Importa** contiene anche l'archivio: andamento del netto, TFR accantonato, confronto
+4. **Home** contiene anche l'archivio: andamento del netto, TFR accantonato, confronto
    mese su mese e la spiegazione di dove sono salvati i dati (browser del dispositivo,
    backup, incognito…).
-5. **Curiosità** → schede oggettive (TFR vs fondo pensione, quanto vale un'ora del tuo
+5. **Extra** → curiosità, dizionario, CCNL e fonti ufficiali. Le schede oggettive (TFR vs
+   fondo pensione, quanto vale un'ora del tuo
    lavoro, quanti giorni di fila si può lavorare, quanto costi all'azienda, perché la 13ª
    sembra più tassata…): quasi tutte hanno un riquadro "I tuoi numeri" calcolato sulla TUA
    busta. L'app spiega i fatti e cosa cambia con ogni scelta; non dice mai cosa fare.
@@ -148,7 +144,7 @@ affidabilità:
 
 Le correzioni alle causali proprietarie vengono apprese **solo sul dispositivo** e per lo
 specifico software paghe. Dalla volta successiva la stessa descrizione viene classificata
-come competenza, trattenuta o dato con il nome confermato dall'utente. Da **Altro** si può
+come competenza, trattenuta o dato con il nome confermato dall'utente. Da **Backup** si può
 anche controllare ed esportare un fixture per contribuire a nuovi test: identità, file ed
 estratti della pagina vengono rimossi e gli importi trasformati mantenendo la quadratura.
 Le causali proprietarie restano comunque da rileggere prima di pubblicarlo.
@@ -173,8 +169,8 @@ non sono inclusi nel repository.
 Interfaccia: chiara e rassicurante, costruita attorno all’icona del **foglio illuminato**. Il pulsante **Riassunto** racconta il mese
 in parole semplicissime e include la barra "Dove vanno i tuoi soldi" (verde = netto,
 arancione = contributi INPS, rosso = tasse, grigio = piccole quote). Schede in ordine
-Importa · Dettaglio · Guida e fonti · Curiosità · Altro (in Semplificato restano Importa,
-Dettaglio, Guida e fonti e Curiosità). Quando pubblichi un aggiornamento della PWA, alza la
+Home · Dettaglio · Riassunto · Diritti minimi · Extra · Backup. Nell’intestazione restano
+soltanto Il progetto, Installa e 100% privacy. Quando pubblichi un aggiornamento della PWA, alza la
 versione della cache in `pwa/sw.js` (`bustachiara-v2`, `-v3`…) così i dispositivi scaricano
 la novità.
 
@@ -285,7 +281,7 @@ di continuo: più il tempo passa, più fidati dei link e meno dell'archivio inte
 - **I CCNL non curati sono identificati, non interpretati in dettaglio.** L'indice ufficiale
   riconosce 1.143 codici, ma mensilità, minimi, ferie e maggiorazioni non possono essere
   dedotti in sicurezza dal solo titolo. L'app applica i minimi di legge come base e offre un
-  **editor CCNL** (⚙️ Altro) per inserire i valori leggendo il testo ufficiale.
+  **editor CCNL** nella scheda Backup per inserire i valori leggendo il testo ufficiale.
 - **Minimi tabellari completi non inclusi.** Cambiano a ogni tranche di rinnovo: includerli
   tutti significherebbe sbagliarli. Dove non c'è il dato, l'app lo dice e linka le tabelle
   sindacali; puoi inserirli nell'editor.
