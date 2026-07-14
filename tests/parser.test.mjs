@@ -106,6 +106,7 @@ approx(jet.record.derivati.ritenuteIrpef, 144.89);
 assert.equal(jet.record.meta.qualita.livello, 'alta');
 assert.equal(jet.record.voci.find(v => v.codice === '0').meta.visual.page, 0);
 assert.ok(jet.record.voci.find(v => v.codice === '0').meta.visual.bbox.w > 0);
+assert.equal(jet.record.voci.every(v => v.meta && v.meta.visual && v.meta.visual.bbox), true, 'ogni voce estratta a coordinate deve rimandare alla sua sorgente');
 assert.ok(jet.record.meta.reconciliation.score >= 70, JSON.stringify({ reconciliation: jet.record.meta.reconciliation, voices: jet.record.voci.map(v => ({ d:v.descrizione,b:v.base,q:v.rifQta,u:v.rifUnita,t:v.trattenuta,c:v.competenza })) }));
 
 const fipe = Parser.trovaCcnl(jet.record, Data.CCNL_DB);

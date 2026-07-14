@@ -43,13 +43,13 @@ function recordIdentityKey(record) { return [periodoKey(record.periodo), employe
 /* ---------- archivio locale ---------- */
 const STORE_KEY = 'bustachiara_v1';
 const Store = {
-  data: { records: [], customCcnl: [], voiceAliases: [], prefs: { modo: 'dettagliato' } },
+  data: { records: [], customCcnl: [], voiceAliases: [] },
   load() {
     try {
       const d = JSON.parse(localStorage.getItem(STORE_KEY));
       if (d && Array.isArray(d.records)) {
         this.data = Object.assign(this.data, d);
-        this.data.prefs = Object.assign({ modo: 'dettagliato' }, d.prefs);
+        delete this.data.prefs; // migrazione: la vecchia modalità semplificata non esiste più
         this.data.voiceAliases = Array.isArray(d.voiceAliases) ? d.voiceAliases : [];
         this.data.records = this.data.records.map(record => {
           record.documento = record.documento || { tipo: 'ordinario' };
@@ -115,20 +115,6 @@ function imparaCorrezioni(record) {
   if (aliases.length > 500) Store.data.voiceAliases = aliases.slice(-500);
 }
 
-/* ---------- tema e modalità ---------- */
-function applyModo() {
-  const m = Store.data.prefs.modo === 'semplificato' ? 'semplificato' : 'dettagliato';
-  document.body.classList.toggle('modo-semplificato', m === 'semplificato');
-  $$('#modo-seg button').forEach(b => b.classList.toggle('active', b.dataset.modo === m));
-  // se la vista corrente è nascosta in semplificato, sposta su una consentita
-  const attiva = $('.view.active');
-  const nascoste = ['view-impostazioni'];
-  if (m === 'semplificato' && attiva && nascoste.includes(attiva.id)) {
-    showView(Store.data.records.length ? 'dettaglio' : 'importa');
-  }
-}
-function isSemplificato() { return Store.data.prefs.modo === 'semplificato'; }
-
 /* ---------- popover informativo ---------- */
 let focusBeforePopover = null;
 function openInfo(titolo, bodyHtml) {
@@ -188,6 +174,7 @@ function showView(name) {
 }
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('.tab'); if (!b) return;
+  if (b.id === 'riassunto-btn') return;
   const v = b.dataset.view;
   // le viste dipendenti dai dati vengono ridisegnate a ogni apertura
   if (v === 'dettaglio') renderDettaglio(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
@@ -239,7 +226,7 @@ function renderImporta() {
     <p class="muted">— Se apri l’app su un altro dispositivo o con un altro browser, lì l’archivio parte vuoto: ogni browser ha il suo, separato.<br>
     — Se usi una finestra in incognito/privata, i dati spariscono quando la chiudi.<br>
     — Se cancelli i dati di navigazione (cronologia/siti) del browser, cancelli anche questo archivio.<br>
-    — Per fare un backup o portare i dati altrove: scheda <b>Altro → Esporta tutto</b> (scarica un file JSON, da custodire come un documento riservato) e poi <b>Importa backup</b> sull’altro dispositivo.</p>
+    — Per fare un backup o portare i dati altrove: scheda <b>Backup → Esporta tutto</b> (scarica un file JSON, da custodire come un documento riservato) e poi <b>Importa backup</b> sull’altro dispositivo.</p>
   </div>`;
   $('#view-importa').innerHTML = `
   <div class="card import-hero">
@@ -330,12 +317,14 @@ async function handleFile(file) {
           const rendered = await renderPage(pdfPages[p], weak ? 2.6 : 1.35);
           if (weak) {
             importStatus(`Pagina ${p + 1}: integro solo le zone senza testo…`, .55 + .25 * (p + 1) / pdfPages.length);
-            const prepared = prepareOcrCanvas(rendered);
-            const data = await ocrDataMulti(prepared, (m, f) => importStatus(`OCR selettivo pagina ${p + 1}: ${m}`, .55 + .25 * ((p + (f || 0)) / pdfPages.length)));
-            const ocrItems = ocrToItems(data, prepared);
+            // Il PDF renderizzato ha già orientamento e geometria corretti. Non lo
+            // ritagliamo né deformiamo: così coordinate native, OCR e anteprima
+            // condividono esattamente lo stesso sistema di riferimento.
+            const data = await ocrDataMulti(rendered, (m, f) => importStatus(`OCR selettivo pagina ${p + 1}: ${m}`, .55 + .25 * ((p + (f || 0)) / pdfPages.length)));
+            const ocrItems = ocrItemsToPdfCoordinates(ocrToItems(data, rendered), pageSizes[p]);
             pages[p] = mergePageItems(pages[p], ocrItems);
           }
-          previews.push(canvasPreviewDataUrl(weak ? prepareOcrCanvas(rendered) : rendered));
+          previews.push(canvasPreviewDataUrl(rendered));
         }
         const { record, warnings } = Parser.parsePdfPages(pages, { pageSizes });
         record.meta.fileName = file.name;
@@ -383,6 +372,13 @@ function mergePageItems(nativeItems, ocrItems) {
     if (!duplicate) result.push(item);
   }
   return result;
+}
+function ocrItemsToPdfCoordinates(items, pageSize) {
+  const scale = pageSize && pageSize.width ? pageSize.width / 600 : 1;
+  return (items || []).map(item => ({
+    str: item.str, x: Number(item.x || 0) * scale, y: Number(item.y || 0) * scale,
+    w: Number(item.w || 0) * scale, h: Number(item.h || 0) * scale,
+  }));
 }
 function canvasPreviewDataUrl(source) {
   const maxWidth = 1200;
@@ -719,7 +715,7 @@ function ocrToItems(data, canvas) {
     r.ws.sort((a, b) => a.x0 - b.x0);
     const y = (canvasH - r.yc) * K;   // stessa y per tutte le celle della riga
     let cur = null;
-    const chiudi = () => { if (cur) items.push({ str: cur.str, x: cur.x0 * K, y, w: (cur.x1 - cur.x0) * K }); };
+    const chiudi = () => { if (cur) items.push({ str: cur.str, x: cur.x0 * K, y, w: (cur.x1 - cur.x0) * K, h: cur.h * K }); };
     for (const w of r.ws) {
       const testo = w.str;
       const numerico = OCR_NUM_RE.test(testo);
@@ -868,7 +864,7 @@ function sourceButton(path, label = 'Mostra nel documento') {
 function sourceViewerHtml() {
   if (!draft.previewPages || !draft.previewPages.length) return '';
   return `<aside class="document-viewer" aria-label="Documento originale">
-    <div class="document-viewer-head"><div><b>Documento</b><p>Seleziona un campo per vedere da dove arriva.</p></div><span class="privacy-local">Solo in memoria</span></div>
+    <div class="document-viewer-head"><div><b>Documento originale</b><p id="source-location">Premi ⌖ accanto a un campo o a una voce.</p></div><span class="privacy-local">Solo in memoria</span></div>
     <div class="document-pages">${draft.previewPages.map((src, page) => `<div class="document-page" data-page="${page}">
       <div class="document-sheet"><img src="${src}" alt="Pagina ${page + 1} del documento"><span class="source-highlight" hidden></span></div>
       <span class="page-number">Pagina ${page + 1}</span>
@@ -883,14 +879,23 @@ function showSourceEvidence(evidence) {
   $$('.source-highlight', $('#view-verifica')).forEach(item => { item.hidden = true; });
   const highlight = $('.source-highlight', page);
   const box = evidence.bbox;
-  highlight.style.left = `${Math.max(0, box.x / size.width * 100)}%`;
-  highlight.style.width = `${Math.min(100, Math.max(1.8, box.w / size.width * 100))}%`;
-  highlight.style.top = `${Math.max(0, (size.height - box.y - box.h) / size.height * 100)}%`;
-  highlight.style.height = `${Math.min(100, Math.max(1.2, box.h / size.height * 100))}%`;
+  const paddingX = Math.max(1.5, size.width * .004), paddingY = Math.max(1, size.height * .0025);
+  const left = Math.max(0, Math.min(size.width, Number(box.x || 0) - paddingX));
+  const right = Math.max(left, Math.min(size.width, Number(box.x || 0) + Number(box.w || 0) + paddingX));
+  const bottom = Math.max(0, Math.min(size.height, Number(box.y || 0) - paddingY));
+  const topPdf = Math.max(bottom, Math.min(size.height, Number(box.y || 0) + Number(box.h || 0) + paddingY));
+  highlight.style.left = `${left / size.width * 100}%`;
+  highlight.style.width = `${Math.max(1.4, (right - left) / size.width * 100)}%`;
+  highlight.style.top = `${(size.height - topPdf) / size.height * 100}%`;
+  highlight.style.height = `${Math.max(1.1, (topPdf - bottom) / size.height * 100)}%`;
   highlight.hidden = false;
+  const location = $('#source-location');
+  if (location) location.textContent = `Pagina ${evidence.page + 1}${evidence.snippet ? ` · ${String(evidence.snippet).slice(0, 72)}` : ''}`;
   page.classList.add('source-active');
   setTimeout(() => page.classList.remove('source-active'), 900);
-  page.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const pages = $('.document-pages', $('#view-verifica'));
+  if (pages) pages.scrollTo({ top: Math.max(0, page.offsetTop - (pages.clientHeight - page.offsetHeight) / 2), behavior: 'smooth' });
+  if (matchMedia('(max-width: 640px)').matches) $('.document-viewer', $('#view-verifica')).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function renderVerifica() {
@@ -993,7 +998,7 @@ function renderVerifica() {
   });
   verifyView.addEventListener('focusin', e => {
     const path = e.target && e.target.dataset && e.target.dataset.k;
-    if (path && draft.record.meta.fields[path]) showSourceEvidence(draft.record.meta.fields[path]);
+    if (!matchMedia('(max-width: 640px)').matches && path && draft.record.meta.fields[path]) showSourceEvidence(draft.record.meta.fields[path]);
   });
   $('#btn-add-voce').addEventListener('click', () => { draft.record.voci.push({ codice: '', descrizione: '', base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null }); renderVociEdit(); });
   $('#btn-salva').addEventListener('click', salvaDraft);
@@ -1004,7 +1009,7 @@ function renderVociEdit() {
   const tb = $('#voci-edit tbody');
   tb.innerHTML = draft.record.voci.map((v, i) => `<tr data-i="${i}">
     <td data-label="Codice"><input class="code" data-vk="codice" aria-label="Codice voce" value="${esc(v.codice || '')}"></td>
-    <td data-label="Descrizione"><div class="voice-description-edit"><input class="desc" data-vk="descrizione" aria-label="Descrizione voce" value="${esc(v.descrizione || '')}">${v.meta && v.meta.visual && draft.previewPages[v.meta.visual.page] ? `<button type="button" class="source-btn" data-source-voice="${i}" aria-label="Mostra la voce nel documento">⌖</button>` : ''}</div></td>
+    <td data-label="Descrizione"><div class="voice-description-stack"><div class="voice-description-edit"><input class="desc" data-vk="descrizione" aria-label="Descrizione voce" value="${esc(v.descrizione || '')}">${v.meta && v.meta.visual && draft.previewPages[v.meta.visual.page] ? `<button type="button" class="source-btn" data-source-voice="${i}" aria-label="Mostra la voce nel documento">⌖</button>` : ''}</div><div class="voice-check" data-voice-check="${i}" hidden></div></div></td>
     <td data-label="Tipo"><select data-vk="categoriaManuale" aria-label="Conferma il tipo di voce"><option value="">Automatico</option><option value="competenza" ${v.categoriaManuale === 'competenza' ? 'selected' : ''}>Competenza</option><option value="trattenuta" ${v.categoriaManuale === 'trattenuta' ? 'selected' : ''}>Trattenuta</option><option value="dato" ${v.categoriaManuale === 'dato' ? 'selected' : ''}>Dato</option></select></td>
     <td class="num" data-label="Base"><input data-vk="base" aria-label="Base" value="${v.base == null ? '' : esc(fmtEur(v.base, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
     <td class="num" data-label="Quantità"><input data-vk="rifQta" aria-label="Quantità" value="${v.rifQta == null ? '' : esc(fmtEur(v.rifQta, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
@@ -1018,6 +1023,44 @@ function renderVociEdit() {
     const i = +b.closest('tr').dataset.i;
     draft.record.voci.splice(i, 1); renderVociEdit(); liveQuadratura();
   }, { once: true });
+}
+function reconciliationCheckLabel(check, record) {
+  const labels = {
+    totali: 'quadratura dei totali', 'somma-competenze': 'somma delle competenze',
+    'somma-trattenute': 'somma delle trattenute', 'paga-oraria': 'plausibilità della paga oraria',
+    'imponibile-irpef': 'plausibilità dell’imponibile IRPEF', 'quota-tfr': 'quota TFR',
+    'ratei.ferie': 'saldo ferie', 'ratei.permessi': 'saldo permessi', 'ratei.exFestivita': 'saldo ex festività',
+  };
+  const voiceMatch = String(check.id || '').match(/^voce\.(\d+)$/);
+  if (voiceMatch) {
+    const voice = (record.voci || [])[+voiceMatch[1]] || {};
+    const identity = [voice.codice, voice.descrizione].filter(Boolean).join(' — ');
+    return identity ? `voce “${identity}”` : `riga ${+voiceMatch[1] + 1} delle voci`;
+  }
+  return labels[check.id] || String(check.id || '').replace(/[-.]/g, ' ');
+}
+function updateVoiceCheckBadges(consistency) {
+  $$('.voice-check', $('#view-verifica')).forEach(item => { item.hidden = true; item.textContent = ''; item.className = 'voice-check'; });
+  const checked = new Set();
+  for (const check of consistency.checks || []) {
+    const match = String(check.id || '').match(/^voce\.(\d+)$/); if (!match) continue;
+    const index = +match[1], voice = draft.record.voci[index];
+    const item = $(`[data-voice-check="${index}"]`, $('#view-verifica')); if (!item || !voice) continue;
+    checked.add(index);
+    const amount = Math.abs(voice.competenza ?? voice.trattenuta ?? 0);
+    const expected = Math.abs((voice.base || 0) * (voice.rifQta || 0) * (/^%$/.test(voice.rifUnita || '') ? .01 : 1));
+    item.hidden = false;
+    item.classList.add(check.ok ? 'ok' : 'warn');
+    item.textContent = check.ok
+      ? `✓ Calcolo coerente: ${fmtEur(expected)} €`
+      : `Da controllare: base × quantità = ${fmtEur(expected)} €, importo ${fmtEur(amount)} € (scarto ${fmtEur(check.delta)} €)`;
+  }
+  (draft.record.voci || []).forEach((voice, index) => {
+    if (checked.has(index)) return;
+    const item = $(`[data-voice-check="${index}"]`, $('#view-verifica')); if (!item) return;
+    item.hidden = false; item.classList.add('info');
+    item.textContent = 'Controllo riga non applicabile: base o quantità non sono presenti.';
+  });
 }
 function onVerificaInput(e) {
   const inp = e.target;
@@ -1053,8 +1096,9 @@ function liveQuadratura() {
   }
   const consistency = Parser.valutaCoerenza(r);
   if (consistency.score != null) {
-    const failed = consistency.checks.filter(check => !check.ok).map(check => check.id.replace(/-/g, ' '));
-    html += `<div class="reconciliation-summary"><b>Coerenza globale ${consistency.score}/100</b><span>${consistency.passed}/${consistency.total} vincoli superati${failed.length ? ` · da verificare: ${esc(failed.slice(0, 3).join(', '))}` : ''}</span></div>`;
+    const failed = consistency.checks.filter(check => !check.ok).map(check => reconciliationCheckLabel(check, r));
+    const visibleFailed = failed.slice(0, 3);
+    html += `<div class="reconciliation-summary"><b>Coerenza globale ${consistency.score}/100</b><span>${consistency.passed}/${consistency.total} vincoli superati${visibleFailed.length ? ` · da verificare: ${esc(visibleFailed.join(', '))}${failed.length > visibleFailed.length ? ` e altri ${failed.length - visibleFailed.length}` : ''}` : ''}</span></div>`;
   }
   const alternatives = r.meta && r.meta.reconciliation && r.meta.reconciliation.alternatives || [];
   const ambiguous = alternatives.length > 1 && alternatives[0].score - alternatives[1].score < .9;
@@ -1062,6 +1106,7 @@ function liveQuadratura() {
     html += `<div class="total-alternatives"><p><b>Più letture plausibili dei totali</b><br><span class="muted small">Scegli confrontando il documento: nessuna alternativa viene nascosta.</span></p>${alternatives.map((item, index) => `<button type="button" data-total-alternative="${index}" class="${index === 0 ? 'selected' : ''}"><b>${index + 1}</b><span>Comp. ${fmtEur(item.competenze)} · Tratt. ${fmtEur(item.trattenute)} · Netto ${fmtEur(item.netto)}</span><small>${esc((item.reasons || []).join(', ') || 'candidato da etichette')}</small></button>`).join('')}</div>`;
   }
   $('#live-quadratura').innerHTML = html;
+  updateVoiceCheckBadges(consistency);
 }
 function salvaDraft() {
   const r = draft.record;
@@ -1102,8 +1147,7 @@ function renderDettaglio(id) {
   const ccnl = r.ccnlId ? ccnlById(r.ccnlId) : Parser.trovaCcnl(r, CCNL_DB, Store.data.customCcnl.map(reviveCustom));
   const findings = eseguiControlli(r, ccnl, Store.data.records);
   detailVoci = r.voci;
-  if (isSemplificato()) renderDettaglioSemplice(el, r, ccnl, findings);
-  else renderDettaglioCompleto(el, r, ccnl, findings);
+  renderDettaglioCompleto(el, r, ccnl, findings);
   const sel = $('#sel-periodo');
   if (sel) sel.addEventListener('change', () => renderDettaglio(sel.value));
 }
@@ -1177,54 +1221,14 @@ function renderDettaglioCompleto(el, r, ccnl, findings) {
   bindDettaglioCommon(el, r);
 }
 
-function renderDettaglioSemplice(el, r, ccnl, findings) {
-  const anomalie = findings.filter(f => f.livello === 'alert');
-  const t = r.totali || {};
-  el.innerHTML = `
-  ${selettorePeriodo(r)}
-  ${anomalie.length ? `<div class="card" style="border-left:4px solid var(--alert)">
-    <h2 style="color:var(--alert)">Da controllare in questa busta</h2>
-    ${anomalie.map(findingHTML).join('')}
-    <p class="muted small">Come muoverti: chiedi prima all’ufficio paghe; se la risposta non convince, un sindacato o un CAF controllano gratis. Per tutti i dettagli passa alla modalità Dettagliato (in alto).</p>
-  </div>` : ''}
-  <div class="card">
-    <h2>La tua busta di ${esc(periodoLabel(r.periodo))}</h2>
-    <div class="netto-big">${fmtEur(t.netto)} €</div>
-    <p>Questi sono i soldi arrivati sul tuo conto (il <b>netto</b>${iBtn('netto')}). Lo stipendio di partenza era <b>${fmtEur(t.competenze)} €</b>${iBtn('competenza')}; da lì sono stati tolti <b>${fmtEur(t.trattenute)} €</b>${iBtn('trattenuta')} tra tasse, contributi per la pensione e piccole quote. Per vedere dove vanno i tuoi soldi, tocca <b>Riassunto</b> in alto.</p>
-    ${r.ratei && r.ratei.ferie ? `<p class="muted">Ferie ancora da usare: <b>${fmtEur(r.ratei.ferie.saldo, 1)} ${/^(?:ORE|ORA|H)$/i.test(r.ratei.ferie.unita || '') ? 'ore' : 'giorni'}</b>${iBtn('ferie')} · Permessi: <b>${fmtEur(r.ratei.permessi ? r.ratei.permessi.saldo : 0, 1)} ore</b>${iBtn('rol')}</p>` : ''}
-    <div class="btnrow"><button class="ghost" id="btn-edit">Modifica dati</button></div>
-  </div>
-  <div class="card">
-    <h2>Le voci, una per una</h2>
-    <p class="muted small">Tocca la “i” per la spiegazione completa di ogni voce.</p>
-    ${r.voci.map((v, i) => {
-      const s = spiegaVoce(v);
-      const imp = v.competenza != null ? v.competenza : (v.trattenuta != null ? v.trattenuta : v.base);
-      const cls = v.competenza != null ? 'plus' : (v.trattenuta != null ? 'minus' : '');
-      const segno = v.competenza != null ? '+' : (v.trattenuta != null ? '−' : '');
-      return `<div class="voce-s">
-        <div class="vs-desc"><span class="vs-nome">${esc(v.descrizione || s.nome)}</span><button class="ibtn" data-vocei="${i}" title="Spiegazione">i</button>
-          <div class="vs-spiega">${esc(s.nome)} — ${esc(primaFrase(s.cosa))}</div>
-        </div>
-        <span class="vs-importo ${cls}">${imp != null ? segno + ' ' + fmtEur(Math.abs(imp)) + ' €' : ''}</span>
-      </div>`;
-    }).join('')}
-    <p class="muted small" style="margin-top:8px">Verde con “+” = soldi che ricevi · rosso con “−” = soldi trattenuti · senza segno = solo un dato informativo${iBtn('dato')}.</p>
-  </div>
-  <div class="card">
-    <p class="muted">Vuoi vedere i calcoli completi, i controlli automatici e il confronto col tuo contratto? Passa alla modalità <b>Dettagliato</b> con il pulsante in alto.</p>
-  </div>`;
-  bindDettaglioCommon(el, r, true);
-}
-function bindDettaglioCommon(el, r, semplice) {
+function bindDettaglioCommon(el, r) {
   const be = $('#btn-edit'); if (be) be.addEventListener('click', () => startVerifica(JSON.parse(JSON.stringify(r)), ['Stai modificando una busta già salvata.']));
   const bp = $('#btn-print'); if (bp) bp.addEventListener('click', () => window.print());
   const bd = $('#btn-del'); if (bd) bd.addEventListener('click', () => {
     if (!confirm('Eliminare questa busta dalla cronologia locale?')) return;
     Store.data.records = Store.data.records.filter(x => x.id !== r.id); Store.save();
     renderImporta();
-    if (isSemplificato() && Store.data.records.length) { renderDettaglio((recSorted().slice(-1)[0] || {}).id); showView('dettaglio'); }
-    else showView('importa');
+    showView('importa');
     toast('Busta eliminata.');
   });
 }
@@ -1252,7 +1256,7 @@ function tfrCard(r) {
     ${t.quotaAnno != null ? `<div><b>Quota anno in corso</b>${fmtEur(t.quotaAnno)} €</div>` : ''}
     <div><b>Destinazione</b>${t.aFondi ? 'Fondo pensione (' + fmtEur(t.aFondi) + ' €)' : 'In azienda'}</div>
   </div>
-  <p class="muted small">Per la scelta azienda/fondo pensione vedi la scheda Curiosità.</p>${fontiHTML(['normattiva', 'covip'])}`);
+  <p class="muted small">Per la scelta azienda/fondo pensione vedi la scheda Extra.</p>${fontiHTML(['normattiva', 'covip'])}`);
 }
 function rateiCard(r) {
   const rt = r.ratei || {};
@@ -1401,18 +1405,30 @@ function curiositaPersonale(id, ctx) {
 }
 function renderConsigli() {
   const ctx = ctxCuriosita();
-  const semplice = isSemplificato();
   $('#view-consigli').innerHTML = `
-  <div class="card"><h2>Curiosità</h2>
+  <div class="card"><h2>Extra</h2>
   <p class="muted">Curiosità da sapere per essere trasparenti e capire come funzionano le cose: come stanno i fatti, cosa cambia con ogni scelta e dove verificarlo. ${ctx ? 'Dove possibile, i calcoli sono fatti sui numeri della tua busta.' : 'Importa una busta e i calcoli verranno fatti sui tuoi numeri.'}</p>
   ${CONSIGLI.map(c => {
     const pers = curiositaPersonale(c.id, ctx);
     const persHtml = pers ? `<div class="finding info"><span class="lvchip info">I tuoi numeri</span><div><p>${pers}</p></div></div>` : '';
-    return semplice
-      ? `<details class="consiglio"><summary>${esc(c.titolo)}</summary><p>${esc(c.semplice || c.testo[0])}</p>${persHtml}${fontiHTML(c.fonti)}</details>`
-      : `<details class="consiglio"><summary>${esc(c.titolo)}</summary>${c.semplice ? `<p><b>In breve:</b> ${esc(c.semplice)}</p>` : ''}${persHtml}${c.testo.map(p => `<p>${esc(p)}</p>`).join('')}${fontiHTML(c.fonti)}</details>`;
+    return `<details class="consiglio"><summary>${esc(c.titolo)}</summary>${c.semplice ? `<p><b>In breve:</b> ${esc(c.semplice)}</p>` : ''}${persHtml}${c.testo.map(p => `<p>${esc(p)}</p>`).join('')}${fontiHTML(c.fonti)}</details>`;
   }).join('')}
+  </div>
+  <div class="card"><h2>Dizionario della busta paga</h2>
+    <p class="muted small">Le stesse spiegazioni che trovi toccando le “i” nell’app.</p>
+    ${Object.values(GLOSSARIO).map(g => `<details class="legge"><summary>${esc(g.nome)}</summary><p>${esc(g.testo)}</p></details>`).join('')}
+  </div>
+  <div class="card"><h2>Esplora i CCNL in archivio</h2>
+    <label class="field">Contratto<select id="extra-ccnl">${allCcnl().map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('')}</select></label>
+    <div id="extra-ccnl-info" style="margin-top:10px"></div>
+    <p class="muted small">In Italia esistono oltre 1.000 CCNL depositati. Se il tuo non c’è, puoi aggiungerlo da Backup → Editor CCNL copiando i valori dal testo ufficiale.</p>
+  </div>
+  <div class="card"><h2>Fonti ufficiali</h2>
+    ${Object.values(FONTI).map(f => `<div class="fonte-item"><a href="${esc(f.url)}" target="_blank" rel="noopener"><b>${esc(f.label)}</b></a><br><span class="muted small">${esc(f.cosa)}</span></div>`).join('')}
   </div>`;
+  const sel = $('#extra-ccnl');
+  const paint = () => { const c = ccnlById(sel.value); $('#extra-ccnl-info').innerHTML = c ? ccnlInfoCard(c, null) : ''; };
+  sel.addEventListener('change', paint); paint();
 }
 
 /* ============================================================
@@ -1423,22 +1439,7 @@ function renderGuida() {
   <div class="card"><h2>I tuoi diritti minimi (valgono sempre)</h2>
   <p class="muted small">Questi sono i minimi di LEGGE: il CCNL può solo migliorarli, mai peggiorarli.</p>
   ${LEGGE.map(l => `<details class="legge"><summary>${esc(l.titolo)}</summary><p>${esc(l.testo)}</p>${fontiHTML(l.fonti)}</details>`).join('')}
-  </div>
-  <div class="card"><h2>Dizionario dei termini della busta paga</h2>
-  <p class="muted small">Le stesse spiegazioni che trovi toccando le “i” nell’app.</p>
-  ${Object.values(GLOSSARIO).map(g => `<details class="legge"><summary>${esc(g.nome)}</summary><p>${esc(g.testo)}</p></details>`).join('')}
-  </div>
-  <div class="card"><h2>Esplora i CCNL in archivio</h2>
-  <label class="field">Contratto<select id="guida-ccnl">${allCcnl().map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('')}</select></label>
-  <div id="guida-ccnl-info" style="margin-top:10px"></div>
-  <p class="muted small">In Italia esistono ~1.000 CCNL depositati: qui trovi i principali. Se il tuo non c’è, crealo in Altro → Editor CCNL copiando i valori dal testo ufficiale (link CNEL).</p>
-  </div>
-  <div class="card"><h2>Dove verificare ogni cosa</h2>
-  ${Object.values(FONTI).map(f => `<div class="fonte-item"><a href="${esc(f.url)}" target="_blank" rel="noopener"><b>${esc(f.label)}</b></a><br><span class="muted small">${esc(f.cosa)}</span></div>`).join('')}
   </div>`;
-  const sel = $('#guida-ccnl');
-  const paint = () => { const c = ccnlById(sel.value); $('#guida-ccnl-info').innerHTML = c ? ccnlInfoCard(c, null) : ''; };
-  sel.addEventListener('change', paint); paint();
 }
 
 /* ============================================================
@@ -1449,21 +1450,23 @@ function renderProgetto() {
   <div class="card"><h2>Perché esiste BustaChiara</h2>
     <p>La busta paga è uno dei documenti più importanti della vita di chi lavora, ed è scritta in un linguaggio che quasi nessuno ha mai studiato. Il risultato è che tanti — soprattutto chi è al primo impiego — firmano, incassano e sperano che i conti siano giusti. Gli errori in busta esistono, sono più frequenti di quanto si pensi, e quasi sempre nessuno li cerca.</p>
     <p>BustaChiara nasce per una cosa sola: metterti in condizione di <b>capire</b> la tua busta e di <b>controllarla</b>, senza dover essere un consulente del lavoro e senza dover consegnare i tuoi dati a qualcun altro.</p>
+    <p>Il progetto è nato anche per evitare di inviare la propria busta paga a <b>ChatGPT, ad altre intelligenze artificiali o a servizi online</b>. Non dovrebbe essere necessario condividere stipendio, codice fiscale, assenze, prestiti o informazioni sanitarie soltanto per capire un cedolino.</p>
   </div>
   <div class="card"><h2>Un progetto Open Source</h2>
     <p>BustaChiara è un progetto <b>Open Source</b>: il codice è pubblico e chiunque può contribuire a rendere il servizio più chiaro, preciso e accessibile.</p>
     <p>Puoi aiutare segnalando un problema, proponendo una funzione, migliorando le spiegazioni, verificando un CCNL o inviando direttamente una modifica al codice. <b>Ogni persona che contribuirà concretamente al progetto verrà riconosciuta nella lista dei contributori.</b></p>
     <p><a href="https://github.com/ShivenBonazzo/bustachiara" target="_blank" rel="noopener"><b>Apri il progetto su GitHub →</b></a></p>
   </div>
-  <div class="card"><h2>Perché tutto locale e privato</h2>
+  <div class="card"><h2>Privacy — come funziona davvero</h2>
     <p>Una busta paga contiene l’elenco più sensibile di informazioni che esista su di te: quanto guadagni, dove lavori, il tuo codice fiscale, i tuoi prestiti (cessioni del quinto), a volte perfino dati sulla salute (malattie, permessi 104). Caricarla su un servizio online — o incollarla in una chat con un’intelligenza artificiale — significa affidare tutto questo a un’azienda terza, alle sue policy e ai suoi archivi.</p>
-    <p>Qui la scelta è tecnica, non solo promessa: la pagina contiene una <b>Content-Security-Policy</b> che ordina al browser di bloccare ogni connessione di rete. I motori di lettura (PDF e riconoscimento ottico) sono inglobati nel file: per questo pesa qualche MB. Puoi verificarlo da solo: apri gli strumenti sviluppatore del browser, scheda “Rete”, e usa l’app — non parte nessuna richiesta. Funziona anche in aereo.</p>
-    <p>I dati stanno solo nel browser del tuo dispositivo. Non esistono account, server, statistiche, pubblicità o codici di tracciamento. Se cancelli i dati del browser, spariscono: per questo c’è l’esportazione manuale (scheda Altro), che resta sotto il tuo controllo.</p>
+    <p>Questa pagina ha una <b>Content-Security-Policy</b> che vieta al browser qualunque connessione di rete: anche volendo, il codice non potrebbe inviare nulla. I motori PDF e OCR sono già inclusi nell’app e funzionano anche offline.</p>
+    <p>I dati stanno nel <b>localStorage del browser</b> di questo dispositivo. Cancellando i dati di navigazione del sito si cancellano anche le buste archiviate: fai backup periodici dalla scheda <b>Backup</b>.</p>
+    <p>Il file originale del PDF <b>non viene salvato</b>: conserviamo soltanto i dati estratti che confermi. L’anteprima usata durante la verifica rimane temporaneamente in memoria e viene eliminata quando esci dalla schermata.</p>
   </div>
   <div class="card"><h2>I principi</h2>
     <p><b>Trasparenza:</b> ogni controllo mostra la formula usata; ogni valore normativo cita la fonte e il link per verificarlo. Dove i dati interni potrebbero essere invecchiati (i CCNL si rinnovano), l’app lo dichiara invece di fingere certezza.</p>
     <p><b>Obiettività:</b> l’app non ti dice cosa scegliere (per esempio sul TFR): ti mostra cosa cambia con ogni opzione, chi ci guadagna cosa, e ti lascia decidere.</p>
-    <p><b>Accessibilità:</b> deve poterla capire anche chi è al primo contratto. Per questo esistono la modalità Semplificato, il dizionario dei termini e le “i” di spiegazione ovunque.</p>
+    <p><b>Accessibilità:</b> deve poterla capire anche chi è al primo contratto. Per questo esistono il Riassunto, il dizionario dei termini e le “i” di spiegazione ovunque.</p>
     <p><b>Nessun interesse:</b> non c’è niente in vendita, nessun fondo o servizio da consigliarti, nessun dato da monetizzare.</p>
   </div>
   <div class="card"><h2>I limiti, dichiarati</h2>
@@ -1472,15 +1475,11 @@ function renderProgetto() {
 }
 
 /* ============================================================
-   IMPOSTAZIONI / ALTRO
+   BACKUP E STRUMENTI LOCALI
    ============================================================ */
 function renderImpostazioni() {
   const custom = Store.data.customCcnl || [];
   $('#view-impostazioni').innerHTML = `
-  <div class="card"><h2>Privacy — come funziona davvero</h2>
-    <p>Questa pagina ha una <b>Content-Security-Policy</b> che vieta al browser qualunque connessione di rete: anche volendo, il codice non potrebbe inviare nulla. I dati stanno nel <b>localStorage del browser</b> di questo dispositivo. Cancellando i dati di navigazione del sito/file, si cancellano anche le buste archiviate: fai export periodici.</p>
-    <p class="muted small">Il file originale del PDF non viene salvato: conserviamo solo i dati estratti che confermi.</p>
-  </div>
   <div class="card"><h2>Backup e trasferimento</h2>
     <div class="btnrow">
       <button class="primary" id="btn-export">Esporta tutto (JSON)</button>
@@ -1543,8 +1542,7 @@ function renderImpostazioni() {
   });
   $('#btn-wipe').addEventListener('click', () => {
     if (!confirm('Cancellare TUTTE le buste e i CCNL personalizzati da questo dispositivo? (irreversibile senza backup)')) return;
-    const prefs = Store.data.prefs;
-    Store.data = { records: [], customCcnl: [], voiceAliases: [], prefs }; Store.save();
+    Store.data = { records: [], customCcnl: [], voiceAliases: [] }; Store.save();
     renderImporta(); renderImpostazioni(); toast('Dati cancellati.');
   });
   $('#btn-cc-save').addEventListener('click', () => {
@@ -1715,17 +1713,17 @@ function demoRecord() {
 function enrichDemoRecord(record) {
   record.meta.pageSizes = [{ width: 600, height: 842 }];
   const evidence = {
-    'ccnl.cnel': [48, 700, 220, 24], 'ccnl.descrizione': [48, 674, 300, 24],
-    'dipendente.nome': [48, 748, 220, 24], 'dipendente.cf': [318, 748, 220, 24],
-    'elementi.pagaBase': [48, 622, 150, 22], 'elementi.superminimo': [210, 622, 150, 22], 'elementi.totale': [372, 622, 150, 22],
-    'totali.competenze': [310, 144, 220, 24], 'totali.trattenute': [310, 116, 220, 24], 'totali.netto': [310, 78, 220, 30],
+    'ccnl.cnel': [48, 694, 220, 20], 'ccnl.descrizione': [48, 668, 300, 20],
+    'dipendente.nome': [48, 720, 220, 20], 'dipendente.cf': [318, 720, 220, 20],
+    'elementi.pagaBase': [48, 600, 150, 22], 'elementi.superminimo': [210, 600, 150, 22], 'elementi.totale': [372, 600, 150, 22],
+    'totali.competenze': [310, 132, 220, 22], 'totali.trattenute': [310, 104, 220, 22], 'totali.netto': [310, 64, 220, 26],
   };
   for (const [path, [x, y, w, h]] of Object.entries(evidence)) record.meta.fields[path] = {
     confidence: .96, source: 'esempio', method: 'testo-coordinate', page: 0, bbox: { x, y, w, h }, snippet: 'Documento dimostrativo',
   };
   (record.voci || []).forEach((voice, index) => {
     if (index > 8) return;
-    voice.meta = { source: 'esempio', confidence: .98, visual: { page: 0, bbox: { x: 44, y: 550 - index * 31, w: 500, h: 23 }, snippet: voice.descrizione } };
+    voice.meta = { source: 'esempio', confidence: .98, visual: { page: 0, bbox: { x: 44, y: 523 - index * 31, w: 500, h: 26 }, snippet: voice.descrizione } };
     voice.descrizioneOriginale = voice.descrizione;
   });
   return record;
@@ -1761,7 +1759,7 @@ function demoPreviewDataUrl() {
    ============================================================ */
 function apriRiassunto() {
   const r = Store.data.records.find(x => x.id === currentDetailId) || recSorted().slice(-1)[0];
-  if (!r) { openInfo('Il tuo mese in breve', '<p>Non c’è ancora nessuna busta salvata. Vai su Importa, carica la tua busta paga e qui troverai il riassunto del mese in poche righe semplici.</p>'); return; }
+  if (!r) { openInfo('Il tuo mese in breve', '<p>Non c’è ancora nessuna busta salvata. Vai su Home, carica la tua busta paga e qui troverai il riassunto del mese in poche righe semplici.</p>'); return; }
   const t = r.totali || {};
   let contributi = 0, tasse = 0, altre = 0;
   for (const v of r.voci) {
@@ -1847,7 +1845,7 @@ async function installaApp() {
     <h4>Mac</h4>
     <p>Con <b>Safari 17 o successivo</b>: menu <b>File → Aggiungi al Dock</b>. Con Chrome o Edge: usa l’icona di installazione nella barra degli indirizzi o il menu <b>Installa BustaChiara</b>.</p>
     <p><b>Dopo l’installazione</b>, l’app compare insieme alle altre applicazioni e continua a funzionare offline. Serve una connessione solo alla prima apertura e per ricevere gli aggiornamenti.</p>
-    <p class="muted small">Non serve cercarla su App Store o Play Store: BustaChiara è una PWA e si installa direttamente dal sito. I dati restano separati su ogni dispositivo, quindi usa Altro → Esporta per fare un backup o trasferirli.</p>`);
+    <p class="muted small">Non serve cercarla su App Store o Play Store: BustaChiara è una PWA e si installa direttamente dal sito. I dati restano separati su ogni dispositivo, quindi usa Backup → Esporta tutto per trasferirli.</p>`);
   if (promptDisponibile) {
     const b = $('#avvia-installazione');
     if (b) b.addEventListener('click', async () => {
@@ -1872,27 +1870,13 @@ async function installaApp() {
     }
   } catch (e) { console.warn('pdf.js worker non inizializzato:', e); }
   Store.load();
-  applyModo();
 
   // controlli barra superiore
   $('#riassunto-btn').addEventListener('click', apriRiassunto);
   $('#progetto-btn').addEventListener('click', () => showView('progetto'));
   $('#install-btn').addEventListener('click', installaApp);
-  $('#privacy-badge').addEventListener('click', () => openInfo('I tuoi dati non escono da qui', '<p>PDF, foto e numeri vengono elaborati <b>interamente su questo dispositivo</b>. Non c’è un account e non c’è un server a cui inviare la busta paga.</p><p>La protezione non è solo una promessa: la pagina usa una regola di sicurezza del browser che blocca le connessioni esterne durante l’analisi.</p><p class="muted small">La cronologia resta nella memoria di questo browser. Per non perderla quando cancelli i dati di navigazione, crea periodicamente un backup dalla sezione Altro.</p>'));
+  $('#privacy-badge').addEventListener('click', () => openInfo('100% privacy', '<p>PDF, foto e numeri vengono elaborati <b>interamente su questo dispositivo</b>. Non c’è un account e non c’è un server a cui inviare la busta paga.</p><p>La Content-Security-Policy blocca le connessioni esterne durante l’analisi. Il PDF originale non viene salvato; restano soltanto i dati che confermi.</p><p class="muted small">La cronologia è nella memoria di questo browser. Per non perderla, crea periodicamente un backup dalla sezione Backup.</p>'));
   aggiornaPulsanteInstallazione();
-  $('#modo-seg').addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-modo]'); if (!b) return;
-    const giaAttiva = Store.data.prefs.modo === b.dataset.modo;
-    Store.data.prefs.modo = b.dataset.modo;
-    Store.save(); applyModo();
-    // ridisegna le viste dipendenti dalla modalità
-    renderConsigli();
-    renderDettaglio(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
-    // cliccare una modalità riporta sempre alla vista principale
-    showView(Store.data.records.length ? 'dettaglio' : 'importa');
-    if (giaAttiva) return;
-    toast(b.dataset.modo === 'semplificato' ? 'Modalità Semplificato: solo l’essenziale, in parole semplici.' : 'Modalità Dettagliato: calcoli, controlli e confronto col CCNL.');
-  });
 
   // popover: apertura da qualsiasi "i" e chiusura
   document.body.addEventListener('click', (e) => {
@@ -1946,7 +1930,5 @@ async function installaApp() {
     }
   } catch (e) { /* ambienti senza service worker */ }
   renderImporta(); renderConsigli(); renderGuida(); renderProgetto(); renderImpostazioni();
-  if (!Store.data.records.length) showView('importa');
-  else if (isSemplificato()) { renderDettaglio((recSorted().slice(-1)[0] || {}).id); showView('dettaglio'); }
-  else showView('importa');
+  showView('importa');
 })();
