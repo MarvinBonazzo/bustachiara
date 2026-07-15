@@ -858,7 +858,7 @@ const NUM_FIELDS = new Set(FIELD_GROUPS.flatMap(g => g.fields.map(f => f[0])).fi
 
 function sourceButton(path, label = 'Mostra nel documento') {
   const meta = draft && draft.record && draft.record.meta && draft.record.meta.fields && draft.record.meta.fields[path];
-  if (!meta || !meta.bbox || meta.page == null || !(draft.previewPages || [])[meta.page]) return '';
+  if (!meta || meta.visualTarget !== 'value' || !meta.bbox || meta.page == null || !(draft.previewPages || [])[meta.page]) return '';
   return `<button type="button" class="source-btn" data-source-path="${esc(path)}" title="${esc(label)}" aria-label="${esc(label)}">⌖</button>`;
 }
 function sourceViewerHtml() {
@@ -998,7 +998,8 @@ function renderVerifica() {
   });
   verifyView.addEventListener('focusin', e => {
     const path = e.target && e.target.dataset && e.target.dataset.k;
-    if (!matchMedia('(max-width: 640px)').matches && path && draft.record.meta.fields[path]) showSourceEvidence(draft.record.meta.fields[path]);
+    const evidence = path && draft.record.meta.fields[path];
+    if (!matchMedia('(max-width: 640px)').matches && evidence && evidence.visualTarget === 'value') showSourceEvidence(evidence);
   });
   $('#btn-add-voce').addEventListener('click', () => { draft.record.voci.push({ codice: '', descrizione: '', base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null }); renderVociEdit(); });
   $('#btn-salva').addEventListener('click', salvaDraft);
@@ -1719,7 +1720,7 @@ function enrichDemoRecord(record) {
     'totali.competenze': [310, 132, 220, 22], 'totali.trattenute': [310, 104, 220, 22], 'totali.netto': [310, 64, 220, 26],
   };
   for (const [path, [x, y, w, h]] of Object.entries(evidence)) record.meta.fields[path] = {
-    confidence: .96, source: 'esempio', method: 'testo-coordinate', page: 0, bbox: { x, y, w, h }, snippet: 'Documento dimostrativo',
+    confidence: .96, source: 'esempio', method: 'testo-coordinate', page: 0, bbox: { x, y, w, h }, snippet: 'Documento dimostrativo', visualTarget: 'value',
   };
   (record.voci || []).forEach((voice, index) => {
     if (index > 8) return;
