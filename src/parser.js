@@ -8,6 +8,7 @@ const NUM_ANY_RE = /[+\-−]?\s*(?:\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,5})?|\d+(?:[,.
 const CODE_TOKEN_RE = /^(?=.{1,12}$)(?=.*\d)[A-Z0-9][A-Z0-9./_-]*$/i;
 const UNIT_RE = /^(?:ORE?|H|GG\.?|GIORNI?|NR\.?|N|%|PERC\.?|MESI?|RATEI?|SETT\.?|EURO|€)$/i;
 const CNEL_CODE_RE = /^[A-Z][A-Z0-9]{2,4}$/;
+const CELL_SPAN_CACHE = new WeakMap();
 
 function getPathValue(object, path) {
   return String(path).split('.').reduce((value, key) => value == null ? value : value[key], object);
@@ -55,6 +56,7 @@ function markField(rec, path, evidence = {}) {
     page: evidence.page == null ? (current && current.page != null ? current.page : null) : evidence.page,
     bbox: evidence.bbox || (current && current.bbox) || null,
     snippet: evidence.snippet || (current && current.snippet) || '',
+    visualTarget: evidence.visualTarget || (current && current.visualTarget) || null,
     confirmed: !!evidence.confirmed,
   };
   if (!current || next.confidence >= current.confidence) rec.meta.fields[path] = next;
@@ -148,6 +150,190 @@ function lineBBox(line) {
 
 function visualEvidence(line) {
   return line ? { page: line.page == null ? null : line.page, bbox: lineBBox(line), snippet: normalizzaTesto(line.text).slice(0, 180) } : {};
+}
+
+function cellsBBox(cells) {
+  if (!cells || !cells.length) return null;
+  const x = Math.min(...cells.map(cell => cell.x));
+  const right = Math.max(...cells.map(cell => cell.x + (cell.w || 0)));
+  const bottom = Math.min(...cells.map(cell => cell.y - Math.max(6, cell.h || 0) * .28));
+  const top = Math.max(...cells.map(cell => cell.y + Math.max(6, cell.h || 0) * 1.14));
+  return { x, y: bottom, w: Math.max(6, right - x), h: Math.max(8, top - bottom) };
+}
+
+function spanForCells(line, cells, quality = 1) {
+  return {
+    line,
+    cells,
+    bbox: cellsBBox(cells),
+    text: normalizzaTesto(cells.map(cell => cell.str).join(' ')),
+    quality,
+  };
+}
+
+function contiguousCellSpans(line, maxCells = 8) {
+  if (maxCells === 8 && line && CELL_SPAN_CACHE.has(line)) return CELL_SPAN_CACHE.get(line);
+  const cells = line && line.cells || [];
+  const spans = [];
+  for (let start = 0; start < cells.length; start++) {
+    for (let end = start; end < Math.min(cells.length, start + maxCells); end++) {
+      const selected = cells.slice(start, end + 1);
+      const bbox = cellsBBox(selected);
+      if (bbox && bbox.w > 380) break;
+      spans.push(spanForCells(line, selected));
+    }
+  }
+  if (maxCells === 8 && line) CELL_SPAN_CACHE.set(line, spans);
+  return spans;
+}
+
+function sameNumber(a, b) {
+  if (a == null || b == null || !Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) return false;
+  return Math.abs(Number(a) - Number(b)) <= Math.max(.00001, Math.abs(Number(b)) * .000001);
+}
+
+function numericTokens(value) {
+  const matches = String(value || '').match(new RegExp(NUM_ANY_RE.source, 'g')) || [];
+  return matches.map(itNum).filter(number => number != null);
+}
+
+function fieldValueMatch(path, value, candidate) {
+  const text = normalizzaTesto(candidate);
+  const normalized = plain(text);
+  if (!text) return 0;
+
+  if (path === 'periodo.mese') {
+    const month = Object.entries(MESI_IT).find(([, number]) => number === Number(value));
+    if (month && new RegExp(`\\b${month[0]}\\b`, 'i').test(text)) return .99;
+    const number = String(Number(value));
+    if (new RegExp(`(?:^|\\D)0?${number}(?:[\\/.-]\\d{2,4}|\\D|$)`).test(text)) return .9;
+    return 0;
+  }
+  if (path === 'periodo.anno') {
+    return new RegExp(`(?:^|\\D)${String(value)}(?:\\D|$)`).test(text) ? .97 : 0;
+  }
+
+  const directNumber = itNum(text);
+  const expectedNumber = typeof value === 'number' || /^\s*[+\-−]?\d+(?:[.,]\d+)?\s*$/.test(String(value)) ? itNum(value) : null;
+  if (expectedNumber != null) {
+    if (sameNumber(directNumber, expectedNumber)) return .995;
+    if (numericTokens(text).some(number => sameNumber(number, expectedNumber))) return .9;
+    return 0;
+  }
+
+  const expected = plain(value);
+  const compactExpected = expected.replace(/[^A-Z0-9]/g, '');
+  const compactCandidate = normalized.replace(/[^A-Z0-9]/g, '');
+  if (!compactExpected) return 0;
+  if (compactCandidate === compactExpected) return 1;
+  if (compactCandidate.includes(compactExpected)) {
+    if (/\.cf$/.test(path) && compactExpected.length === 16) return .98;
+    if (path === 'ccnl.cnel' && compactExpected.length >= 4) return .97;
+    if (compactExpected.length >= 6 && compactExpected.length / compactCandidate.length >= .52) return .94;
+  }
+  if (compactExpected.includes(compactCandidate) && compactCandidate.length >= 6 && compactCandidate.length / compactExpected.length >= .86) return .88;
+  return 0;
+}
+
+function fieldValueLocation(path, value, candidate) {
+  const text = normalizzaTesto(candidate);
+  if (!text) return null;
+  if (path === 'periodo.mese') {
+    const month = Object.entries(MESI_IT).find(([, number]) => number === Number(value));
+    const word = month ? new RegExp(`\\b${month[0]}\\b`, 'i').exec(text) : null;
+    if (word) return { start: word.index, end: word.index + word[0].length };
+    const number = new RegExp(`(?:^|\\D)(0?${Number(value)})(?=[\\/.-]\\d{2,4}|\\D|$)`).exec(text);
+    if (number) return { start: number.index + number[0].indexOf(number[1]), end: number.index + number[0].indexOf(number[1]) + number[1].length };
+    return null;
+  }
+  if (path === 'periodo.anno') {
+    const year = new RegExp(`(?:^|\\D)(${String(value)})(?:\\D|$)`).exec(text);
+    if (year) return { start: year.index + year[0].indexOf(year[1]), end: year.index + year[0].indexOf(year[1]) + year[1].length };
+    return null;
+  }
+
+  const expectedNumber = typeof value === 'number' || /^\s*[+\-−]?\d+(?:[.,]\d+)?\s*$/.test(String(value)) ? itNum(value) : null;
+  if (expectedNumber != null) {
+    for (const match of text.matchAll(new RegExp(NUM_ANY_RE.source, 'g'))) {
+      if (sameNumber(itNum(match[0]), expectedNumber)) return { start: match.index, end: match.index + match[0].length };
+    }
+    return null;
+  }
+
+  const expected = plain(value);
+  const normalized = plain(text);
+  const index = normalized.indexOf(expected);
+  if (index >= 0 && expected.length >= 2) return { start: index, end: index + expected.length };
+  const compactExpected = expected.replace(/[^A-Z0-9]/g, '');
+  if (!compactExpected) return null;
+  const compactText = normalized.replace(/[^A-Z0-9]/g, '');
+  const compactIndex = compactText.indexOf(compactExpected);
+  if (compactIndex < 0) return null;
+  let seen = 0, start = -1, end = normalized.length;
+  for (let index = 0; index < normalized.length; index++) {
+    if (!/[A-Z0-9]/.test(normalized[index])) continue;
+    if (seen === compactIndex) start = index;
+    seen++;
+    if (seen === compactIndex + compactExpected.length) { end = index + 1; break; }
+  }
+  return start >= 0 ? { start, end } : null;
+}
+
+function refineSpanToValue(span, path, value) {
+  for (const cell of span.cells) {
+    const text = normalizzaTesto(cell.str);
+    const location = fieldValueLocation(path, value, text);
+    if (!location || location.end <= location.start || !text.length) continue;
+    const startRatio = location.start / text.length;
+    const endRatio = location.end / text.length;
+    const refined = Object.assign({}, cell, {
+      x: cell.x + (cell.w || 0) * startRatio,
+      w: Math.max(3, (cell.w || 0) * (endRatio - startRatio)),
+      str: text.slice(location.start, location.end),
+    });
+    return spanForCells(span.line, [refined], span.quality);
+  }
+  return span;
+}
+
+function matchingValueSpans(line, path, value) {
+  const matches = contiguousCellSpans(line).map(span => {
+    span.quality = fieldValueMatch(path, value, span.text);
+    return span.quality > 0 ? refineSpanToValue(span, path, value) : span;
+  }).filter(span => span.quality > 0)
+    .sort((a, b) => b.quality - a.quality || a.cells.length - b.cells.length || a.bbox.w - b.bbox.w);
+
+  const selected = [];
+  for (const match of matches) {
+    const overlaps = selected.some(other => {
+      const left = Math.max(match.bbox.x, other.bbox.x);
+      const right = Math.min(match.bbox.x + match.bbox.w, other.bbox.x + other.bbox.w);
+      return right > left && (right - left) / Math.min(match.bbox.w, other.bbox.w) > .75;
+    });
+    if (!overlaps) selected.push(match);
+  }
+  return selected;
+}
+
+function matchingLabelSpans(line, regex) {
+  const matches = contiguousCellSpans(line).filter(span => {
+    regex.lastIndex = 0;
+    return regex.test(span.text);
+  }).sort((a, b) => a.cells.length - b.cells.length || a.bbox.w - b.bbox.w);
+  if (matches.length) return matches.filter((match, index) => index === 0 || !matches.slice(0, index).some(other => {
+    const left = Math.max(match.bbox.x, other.bbox.x);
+    const right = Math.min(match.bbox.x + match.bbox.w, other.bbox.x + other.bbox.w);
+    return right > left;
+  }));
+  regex.lastIndex = 0;
+  return regex.test(normalizzaTesto(line.text)) ? [spanForCells(line, line.cells, .75)] : [];
+}
+
+function horizontalGap(a, b) {
+  if (!a || !b) return Infinity;
+  if (a.x + a.w < b.x) return b.x - (a.x + a.w);
+  if (b.x + b.w < a.x) return a.x - (b.x + b.w);
+  return 0;
 }
 
 function findLine(lines, re, from = 0) {
@@ -998,6 +1184,7 @@ const VISUAL_FIELD_LABELS = [
   { paths: ['dipendente.qualifica'], re: /QUALIFICA|MANSIONE/i },
   { paths: ['dipendente.dataAssunzione'], re: /DATA\s+ASSUNZIONE|ASSUNZIONE/i },
   { paths: ['azienda.nome'], re: /RAGIONE\s+SOCIALE|DATORE\s+DI\s+LAVORO|AZIENDA/i },
+  { paths: ['azienda.cf'], re: /CODICE\s+FISCALE.*P\.?\s*IVA|PARTITA\s+IVA|C\.?F\.?\s+AZIENDA/i },
   { paths: ['ccnl.cnel', 'ccnl.descrizione'], re: /CODICE\s+CNEL|\bCNEL\b|CONTRATTO\s+APPLICATO|\bCCNL\b/i },
   { paths: ['elementi.pagaBase'], re: /PAGA\s+BASE|STIPENDIO\s+TABELLARE|MINIMO\s+CONTRATTUALE/i },
   { paths: ['elementi.contingenza'], re: /CONTINGENZA/i },
@@ -1015,28 +1202,107 @@ const VISUAL_FIELD_LABELS = [
   { paths: ['tfr.retribUtile'], re: /RETRIBUZIONE\s+UTILE\s+T\.?\s*F\.?\s*R/i },
   { paths: ['tfr.quotaMese'], re: /TFR\s+DEL\s+MESE|QUOTA\s+T\.?\s*F\.?\s*R/i },
   { paths: ['tfr.fondo3112'], re: /TFR\s+AL\s+31[\/-]12|FONDO\s+(?:AL\s+)?31[\/-]12|OGGI\s+IN\s+AZIENDA\s+HAI/i },
+  { paths: ['tfr.rivalutazione'], re: /RIVALUTAZ(?:IONE|\.)/i },
+  { paths: ['tfr.quotaAnno'], re: /QUOTA\s+ANNO/i },
+  { paths: ['tfr.aFondi'], re: /TFR\s+(?:A|AI)\s+FOND/i },
   { paths: ['progressivi.impInps'], re: /IMPONIBILE\s+INPS\s+PROGR|PROGRESSIVI.*IMP\.?\s*INPS/i },
   { paths: ['progressivi.impIrpef'], re: /IMPONIBILE\s+(?:IRPEF|FISCALE)\s+PROGR|PROGRESSIVI.*IMP\.?\s*IRPEF/i },
+  { paths: ['progressivi.irpefPagata'], re: /IRPEF\s+PAGATA/i },
+  { paths: ['ratei.ferie.residuoAp', 'ratei.ferie.maturato', 'ratei.ferie.goduto', 'ratei.ferie.godutoAp', 'ratei.ferie.saldo'], re: /^\s*FERIE\b/i },
+  { paths: ['ratei.permessi.residuoAp', 'ratei.permessi.maturato', 'ratei.permessi.goduto', 'ratei.permessi.godutoAp', 'ratei.permessi.saldo'], re: /^\s*(?:PERMESSI|ROL|R\.O\.L\.)\b/i },
 ];
+
+function anchoredValueEvidence(path, value, allLines, regex) {
+  const ranked = [];
+  for (const lines of allLines) {
+    for (let labelIndex = 0; labelIndex < lines.length; labelIndex++) {
+      const labelLine = lines[labelIndex];
+      const labels = matchingLabelSpans(labelLine, regex);
+      for (const label of labels) {
+        const first = Math.max(0, labelIndex - 2);
+        const last = Math.min(lines.length - 1, labelIndex + 6);
+        for (let valueIndex = first; valueIndex <= last; valueIndex++) {
+          const valueLine = lines[valueIndex];
+          const vertical = Math.abs(valueLine.y - labelLine.y);
+          if (vertical > 96) continue;
+          for (const candidate of matchingValueSpans(valueLine, path, value)) {
+            const labelCenter = label.bbox.x + label.bbox.w / 2;
+            const valueCenter = candidate.bbox.x + candidate.bbox.w / 2;
+            const rowDelta = valueIndex - labelIndex;
+            let score = (1 - candidate.quality) * 90
+              + vertical * .72
+              + horizontalGap(label.bbox, candidate.bbox) * .18
+              + Math.abs(labelCenter - valueCenter) * .045
+              + Math.abs(rowDelta) * 1.8
+              + candidate.cells.length * .15;
+            if (rowDelta === 0) {
+              if (candidate.bbox.x >= label.bbox.x - 3) score -= 9;
+              if (horizontalGap(label.bbox, candidate.bbox) === 0) score -= 4;
+            } else if (rowDelta > 0) {
+              score -= 5;
+              if (Math.abs(labelCenter - valueCenter) < 55) score -= 4;
+            } else {
+              score += 5;
+            }
+            ranked.push({ candidate, score });
+          }
+        }
+      }
+    }
+  }
+  ranked.sort((a, b) => a.score - b.score || b.candidate.quality - a.candidate.quality || a.candidate.bbox.w - b.candidate.bbox.w);
+  return ranked.length ? ranked[0].candidate : null;
+}
+
+function uniqueValueEvidence(path, value, allLines) {
+  const candidates = [];
+  for (const lines of allLines) {
+    for (const line of lines) {
+      for (const candidate of matchingValueSpans(line, path, value)) {
+        if (candidate.quality >= .97) candidates.push(candidate);
+      }
+    }
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.quality - a.quality || a.bbox.w - b.bbox.w);
+  const bestByLocation = [];
+  for (const candidate of candidates) {
+    if (bestByLocation.some(other => other.line.page === candidate.line.page
+      && Math.abs(other.bbox.x - candidate.bbox.x) < 2
+      && Math.abs(other.bbox.y - candidate.bbox.y) < 2)) continue;
+    bestByLocation.push(candidate);
+  }
+  return bestByLocation.length === 1 ? bestByLocation[0] : null;
+}
 
 function attachVisualEvidence(rec, allLines) {
   for (const definition of VISUAL_FIELD_LABELS) {
-    const missing = definition.paths.filter(path => getPathValue(rec, path) != null && !(rec.meta.fields[path] && rec.meta.fields[path].bbox));
-    if (!missing.length) continue;
-    let found = null;
-    for (const lines of allLines) {
-      found = lines.find(line => { definition.re.lastIndex = 0; return definition.re.test(normalizzaTesto(line.text)); });
-      if (found) break;
-    }
-    if (!found) continue;
-    const evidence = visualEvidence(found);
-    for (const path of missing) {
+    for (const path of definition.paths) {
+      const value = getPathValue(rec, path);
+      if (value == null || value === '') continue;
       const current = rec.meta.fields[path];
-      markField(rec, path, Object.assign({
-        confidence: current ? current.confidence : (rec.meta.fonte === 'ocr' ? .56 : .8),
-        source: current ? current.source : rec.meta.fonte,
-        method: current ? current.method : 'etichetta-visiva',
-      }, evidence));
+      const match = anchoredValueEvidence(path, value, allLines, definition.re)
+        || uniqueValueEvidence(path, value, allLines);
+      if (!match) {
+        if (current && current.visualTarget !== 'value') {
+          current.page = null;
+          current.bbox = null;
+          current.snippet = '';
+        }
+        continue;
+      }
+      if (!current) markField(rec, path, {
+        confidence: rec.meta.fonte === 'ocr' ? .56 : .8,
+        source: rec.meta.fonte,
+        method: 'valore-coordinate',
+      });
+      Object.assign(rec.meta.fields[path], {
+        page: match.line.page == null ? null : match.line.page,
+        bbox: match.bbox,
+        snippet: match.text.slice(0, 180),
+        visualTarget: 'value',
+        visualConfidence: match.quality,
+      });
     }
   }
 }
@@ -1237,9 +1503,10 @@ function ripulisciRecord(rec) {
   return rec;
 }
 
-function finalizzaRecord(rec, warnings) {
+function finalizzaRecord(rec, warnings, allLines = null) {
   resolveTotalCandidates(rec);
   inferMissingTotal(rec, warnings);
+  if (allLines) attachVisualEvidence(rec, allLines);
   ripulisciVoci(rec);
   annotateFields(rec);
   rec.meta.consistency = valutaCoerenza(rec);
@@ -1274,9 +1541,7 @@ function parsePdfPages(pages, options = {}) {
   extractProgressivesAndTfr(rec, allLines);
   extractAccruals(rec, allLines);
   extractHours(rec, allLines, fullText);
-  attachVisualEvidence(rec, allLines);
-
-  return finalizzaRecord(rec, warnings);
+  return finalizzaRecord(rec, warnings, allLines);
 }
 
 function textGrabNumber(text, regex) {

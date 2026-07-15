@@ -37,8 +37,8 @@ assert.equal(Parser.itNum('9.84122'), 9.84122);
 assert.equal(Parser.itNum('1.234'), 1234);
 
 const jet = Parser.parsePdfPages([page([
-  [800, [[25, 'AZIENDA DIMOSTRATIVA S.R.L.'], [260, 'MESE DI RETRIBUZIONE']]],
-  [786, [[260, 'GIUGNO 2026']]],
+  [800, [[25, 'AZIENDA DIMOSTRATIVA S.R.L.'], [170, 'CODICE FISCALE / P.IVA'], [260, 'MESE DI RETRIBUZIONE']]],
+  [786, [[170, '06876040483'], [260, 'GIUGNO 2026']]],
   [770, [[258, 'GG. LAVORATI'], [335, 'ORE LAVORATE']]],
   [758, [[270, '23'], [340, '153,41']]],
   [740, [[30, 'MARIO ESEMPIO']]],
@@ -104,6 +104,21 @@ approx(jet.record.tfr.fondo3112, 1436.47);
 approx(jet.record.derivati.ulterioreDetrazione, 82.19);
 approx(jet.record.derivati.ritenuteIrpef, 144.89);
 assert.equal(jet.record.meta.qualita.livello, 'alta');
+const jetCfEvidence = jet.record.meta.fields['dipendente.cf'];
+assert.equal(jetCfEvidence.visualTarget, 'value');
+assert.equal(jetCfEvidence.snippet, 'RSSMRA80A01H501U');
+assert.ok(jetCfEvidence.bbox.y < 690 && jetCfEvidence.bbox.y > 680, `il CF deve evidenziare il valore, non l'etichetta: ${JSON.stringify(jetCfEvidence)}`);
+assert.ok(jetCfEvidence.bbox.x < 50, `il CF deve evidenziare la sua cella: ${JSON.stringify(jetCfEvidence)}`);
+assert.ok(jet.record.meta.fields['dipendente.livello'].bbox.w < 10, `il livello deve isolare il valore anche quando il PDF lo unisce al codice dipendente: ${JSON.stringify(jet.record.meta.fields['dipendente.livello'])}`);
+const jetCnelEvidence = jet.record.meta.fields['ccnl.cnel'];
+assert.equal(jetCnelEvidence.visualTarget, 'value');
+assert.equal(jetCnelEvidence.snippet, 'H05Y');
+assert.ok(jetCnelEvidence.bbox.y < 720, `il CNEL deve evidenziare il codice: ${JSON.stringify(jetCnelEvidence)}`);
+for (const path of ['elementi.pagaBase', 'elementi.contingenza', 'elementi.totale', 'totali.competenze', 'totali.trattenute', 'totali.netto']) {
+  const evidence = jet.record.meta.fields[path];
+  assert.equal(evidence.visualTarget, 'value', `${path}: manca un riferimento visivo verificato sul valore`);
+  assert.ok(evidence.snippet && !/^(?:PAGA|CONTINGENZA|RETRIBUZIONE MENSILE|TOTALE|NETTO IN BUSTA)$/i.test(evidence.snippet), `${path}: è stata evidenziata l'etichetta anziché il valore`);
+}
 assert.equal(jet.record.voci.find(v => v.codice === '0').meta.visual.page, 0);
 assert.ok(jet.record.voci.find(v => v.codice === '0').meta.visual.bbox.w > 0);
 assert.equal(jet.record.voci.every(v => v.meta && v.meta.visual && v.meta.visual.bbox), true, 'ogni voce estratta a coordinate deve rimandare alla sua sorgente');
@@ -194,6 +209,12 @@ approx(zucchetti.record.progressivi.impIrpef, 13881.42);
 approx(zucchetti.record.ratei.ferie.saldo, 9.25666);
 approx(zucchetti.record.totali.netto, 2276);
 assert.equal(zucchetti.record.meta.qualita.livello, 'alta');
+assert.equal(zucchetti.record.meta.fields['dipendente.cf'].visualTarget, 'value');
+assert.equal(zucchetti.record.meta.fields['dipendente.cf'].snippet, 'RSSMRA80A01H501U');
+assert.equal(zucchetti.record.meta.fields['ccnl.cnel'].visualTarget, 'value');
+assert.match(zucchetti.record.meta.fields['ccnl.cnel'].snippet, /H052/);
+assert.equal(zucchetti.record.meta.fields['totali.netto'].visualTarget, 'value');
+assert.equal(zucchetti.record.meta.fields['totali.netto'].snippet, '2.276,00');
 
 const genericOcr = Parser.parseFreeText(`
 CEDOLINO PAGA 06/2026
