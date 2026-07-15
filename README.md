@@ -182,10 +182,11 @@ personali — l'unica "busta" inclusa è l'esempio con dati inventati (Mario Ros
 
 ## 2. Privacy: come è garantita (non "promessa")
 
-- Il file HTML contiene una **Content-Security-Policy** che ordina al browser di **bloccare
-  qualunque connessione di rete** (`default-src 'none'`, `connect-src` solo `blob:/data:`).
-  Anche se il codice volesse inviare dati, il browser glielo impedirebbe. Puoi verificarlo:
-  apri gli strumenti sviluppatore → scheda Rete → usa l'app → nessuna richiesta.
+- Il file HTML contiene una **Content-Security-Policy** che blocca le connessioni verso
+  origini esterne: `default-src 'none'` e `connect-src blob: data: 'self'`. `'self'` consente
+  soltanto le risorse statiche e gli aggiornamenti provenienti dalla stessa installazione
+  GitHub Pages/localhost; non autorizza API, analytics o server di terzi. Puoi verificarlo
+  negli strumenti sviluppatore: durante l'analisi non parte alcuna richiesta esterna.
 - I motori di lettura (pdf.js) e OCR (tesseract.js + dizionario italiano) sono **inglobati
   nel file** (per questo pesa ~9 MB): non viene scaricato nulla.
 - La cronologia sta nel **localStorage del browser**. Il PDF originale **non** viene salvato:
@@ -348,6 +349,53 @@ contributi accettati.
 
 ## 8. Architettura tecnica
 
+### Su cosa si basa BustaChiara
+
+BustaChiara non usa un backend, un database remoto, API a pagamento, ChatGPT o altri
+modelli generativi. È un'applicazione web deterministica: a parità di documento e versione
+del codice produce lo stesso risultato, e ogni regola può essere letta, verificata e
+modificata nel repository.
+
+| Componente | Tecnologia | Ruolo |
+|---|---|---|
+| Interfaccia | HTML5, CSS e JavaScript vanilla | schermate, verifica manuale, archivio e backup |
+| PDF nativi | pdf.js 3.11.174 | testo, dimensioni, pagina e coordinate di ogni elemento |
+| Scansioni e foto | tesseract.js 5.1.1, WebAssembly e modello italiano `ita` | OCR interamente nel browser |
+| Parser | regole JavaScript, geometria, dizionari e riconciliazione matematica | trasforma parole e coordinate in un cedolino strutturato |
+| Classificazione | codici noti, espressioni regolari, sinonimi, trigrammi e distanza testuale | riconosce abbreviazioni, refusi OCR e causali simili |
+| CCNL | archivio curato + indice Open Data CNEL generato | identifica il contratto e abilita i controlli disponibili |
+| Controlli | formule esplicite in JavaScript | quadrature, contributi, imposte, TFR, ratei e confronti CCNL |
+| Persistenza | `localStorage` | conserva record confermati, CCNL locali e correzioni sul dispositivo |
+| PWA | Web App Manifest, Service Worker e Cache Storage | installazione e funzionamento offline |
+| Sicurezza | Content-Security-Policy e assenza di endpoint applicativi | impedisce connessioni verso servizi esterni |
+| Build e pubblicazione | Node.js, script `.mjs`, GitHub Actions e GitHub Pages | test, assemblaggio e deploy statico |
+
+Il progetto non usa framework, `npm install`, bundler o transpiler. Le librerie necessarie
+sono già presenti in `vendor/`; Node.js serve soltanto per test, generazione dell'indice
+CNEL e assemblaggio della versione pubblicabile.
+
+### Avvio locale in meno di due minuti
+
+Requisito consigliato: **Node.js 22**, la stessa versione usata dalla CI.
+
+```bash
+git clone https://github.com/ShivenBonazzo/bustachiara.git
+cd bustachiara
+node tests/parser.test.mjs
+node build.mjs
+python3 -m http.server 8000 --directory pwa
+```
+
+Apri poi `http://localhost:8000`. Su Windows, se `python3` non è disponibile, normalmente
+si può usare `py -m http.server 8000 --directory pwa`. Un server locale è consigliato
+per verificare correttamente Manifest e Service Worker; non è necessario per eseguire i
+test del parser.
+
+Modifica i file dentro `src/`, non `pwa/index.html`: quest'ultimo è generato da
+`node build.mjs`, è escluso da Git e viene ricreato automaticamente durante il deploy.
+
+### Struttura del repository
+
 ```
 BustaChiara/
 ├── .github/workflows/ ← test automatici, deploy e aggiornamento settimanale CNEL
@@ -377,6 +425,213 @@ BustaChiara/
     ├── tesseract.min.js + worker + core wasm (tesseract.js 5.1.1, Apache-2.0)
     └── ita.traineddata.gz                    (dizionario OCR italiano "fast")
 ```
+
+### Flusso dei dati
+
+```mermaid
+flowchart TD
+    A["PDF, scansione o foto"] --> B{"PDF con testo sufficiente?"}
+    B -->|Sì| C["pdf.js: testo + pagina + coordinate"]
+    B -->|No o solo in alcune zone| D["Canvas + preparazione immagine"]
+    D --> E["Tesseract OCR locale"]
+    C --> F["Item normalizzati x, y, larghezza, altezza, testo"]
+    E --> F
+    F --> G["Ricostruzione di righe, colonne e sezioni"]
+    G --> H["Estrazione di campi, voci e candidati alternativi"]
+    H --> I["Riconciliazione matematica e punteggi di affidabilità"]
+    I --> J["Record strutturato"]
+    J --> K["Verifica affiancata al documento"]
+    K --> L["Conferma o correzione dell'utente"]
+    L --> M["localStorage e analisi"]
+```
+
+In dettaglio:
+
+1. `src/ui.js` legge il file come `ArrayBuffer`; anche la password di un PDF protetto viene
+   passata direttamente a pdf.js e non viene conservata.
+2. Per un PDF nativo pdf.js produce elementi nel formato `{ str, x, y, w, h }`. Se una
+   pagina contiene troppo poco testo, l'OCR integra soltanto quella pagina; immagini e
+   scansioni passano invece interamente da Tesseract.
+3. `buildLines()` in `src/parser.js` raggruppa gli elementi per coordinata verticale e li
+   ordina da sinistra a destra. Le estrazioni lavorano quindi sulla geometria del documento,
+   non soltanto su una lunga stringa.
+4. Gli estrattori cercano anagrafica, periodo, CCNL, elementi fissi, voci, contributi,
+   riepilogo fiscale, totali, TFR, progressivi, ratei e orario. Le righe senza una tabella
+   classica vengono lette tramite etichette e contesto della sezione.
+5. Uno stesso campo può avere più candidati. Ogni candidato conserva valore, metodo,
+   confidenza, pagina, coordinate e testo di origine; la risoluzione finale confronta anche
+   somme delle voci e quadratura del netto.
+6. L'evidenza visuale non punta semplicemente alla prima etichetta trovata: cerca la cella
+   che contiene il valore estratto, valuta tutte le etichette omonime e può isolare una
+   sottostringa quando il PDF fonde più colonne nello stesso elemento.
+7. `src/checks.js` riceve il record già confermato e produce risultati espliciti con livello,
+   titolo, dettaglio, formula e fonti. Il motore non modifica i dati originali.
+8. Il PDF originale e le anteprime non vengono archiviati. Dopo la conferma vengono salvati
+   nel browser il record strutturato e i suoi metadati utili.
+
+### Modello dati principale
+
+Il parser restituisce `{ record, warnings }`. La forma semplificata del `record` è questa:
+
+```js
+{
+  documento: { tipo: 'ordinario' },
+  periodo: { mese: 6, anno: 2026 },
+  azienda: { nome, cf },
+  dipendente: { nome, cf, livello, qualifica, dataAssunzione },
+  ccnl: { cnel, descrizione },
+  elementi: { pagaBase, contingenza, superminimo, scatti, totale, altri: [] },
+  orario: { oreOrdinarie, giorniLavorati, pagaOraria, pagaGiornaliera },
+  voci: [{ codice, descrizione, base, rifQta, rifUnita, competenza, trattenuta }],
+  totali: { competenze, trattenute, arrotondamento, netto },
+  tfr: {},
+  progressivi: {},
+  ratei: {},
+  derivati: {},
+  meta: {
+    fonte, software, settore,
+    fields: {}, candidates: {}, reconciliation: {}, consistency: {},
+    qualita: {}, pageSizes: []
+  }
+}
+```
+
+I nomi dei campi sono usati come percorsi, per esempio `dipendente.cf` o
+`totali.competenze`. In `meta.fields[path]` si trovano affidabilità e provenienza:
+
+```js
+meta.fields['dipendente.cf'] = {
+  confidence: 0.94,
+  source: 'pdf',
+  method: 'testo-coordinate',
+  page: 0,
+  bbox: { x, y, w, h },
+  snippet: 'valore individuato',
+  visualTarget: 'value'
+};
+```
+
+`page` è zero-based e `bbox` usa le coordinate PDF, con origine in basso a sinistra. La UI
+le converte in percentuali con origine in alto a sinistra per sovrapporre il riquadro
+all'anteprima. Se non esiste una corrispondenza affidabile sul valore, il pulsante sorgente
+non viene mostrato: è preferibile nessuna evidenza a un'evidenza ingannevole.
+
+### Dove intervenire
+
+| Se vuoi modificare… | File principale | Cosa cercare |
+|---|---|---|
+| struttura HTML, CSP o metadati iniziali | `src/template.html` | `<head>`, viste e contenitori principali |
+| colori, responsive e accessibilità visiva | `src/app.css` | componenti, media query e stati focus |
+| navigazione, import, OCR, archivio, backup | `src/ui.js` | `handleFile`, `parseDaOcr`, `render*`, `Store` |
+| riconoscimento di campi e tabelle | `src/parser.js` | `buildLines`, funzioni `extract*`, `parsePdfPages` |
+| riconoscimento del software paghe | `src/parser.js` | `rilevaSoftware` |
+| termini specifici di un settore | `src/parser-sectors.js` | moduli e alias settoriali |
+| nomi e spiegazioni delle voci | `src/data.js` | `VOCI_CODICI`, `VOCI_PATTERN`, `VOCI_SEMANTICHE` |
+| regole fiscali o parametri CCNL curati | `src/data.js` | `FISCO`, `CCNL_DB` |
+| formule e segnalazioni | `src/checks.js` | `eseguiControlli` |
+| indice ufficiale dei contratti | `scripts/update-cnel.mjs` | normalizzazione Open Data CNEL |
+| icona | `pwa/icons/app-icon-source.png`, `make-icons.py` | sorgente e generazione dei formati PWA |
+| nome, colori e comportamento installabile | `pwa/manifest.webmanifest`, `pwa/sw.js` | Manifest, asset e versione cache |
+| casi di regressione | `tests/parser.test.mjs`, `tests/fixtures/` | layout sintetici e valori attesi |
+
+### Come sviluppare una modifica senza rompere gli altri cedolini
+
+#### Aggiungere o correggere un layout
+
+1. Riduci il problema a poche righe anonime con coordinate; non inserire il PDF reale nel
+   repository.
+2. Aggiungi prima un caso che fallisce in `tests/fixtures/general-layouts.json` oppure in
+   `tests/parser.test.mjs`.
+3. Correggi una regola generale: etichetta, struttura di colonna, contesto o riconciliazione.
+   Evita controlli basati sul nome di una persona, azienda, file o su coordinate assolute di
+   un singolo cedolino.
+4. Se aggiungi un riferimento affiancato al documento, collega il riquadro alla cella del
+   valore e non alla sola etichetta.
+5. Esegui test e build prima della Pull Request.
+
+#### Aggiungere una nuova voce al dizionario
+
+- usa `VOCI_CODICI` solo quando il codice ha un significato sufficientemente stabile;
+- aggiungi a `VOCI_PATTERN` una regex prudente, nome, categoria, spiegazione e indicazioni
+  di controllo;
+- aggiungi sinonimi a `VOCI_SEMANTICHE` quando vuoi tollerare abbreviazioni o piccoli errori
+  OCR;
+- inserisci termini settoriali in `src/parser-sectors.js` se avrebbero troppi falsi positivi
+  negli altri tipi di lavoro;
+- aggiungi almeno un'asserzione positiva e, quando il rischio esiste, una negativa.
+
+L'ordine conta: classificazione manuale locale, codice noto, pattern testuale, somiglianza
+semantica e infine lato contabile della riga. La descrizione originale deve restare sempre
+disponibile all'utente.
+
+#### Aggiungere un controllo
+
+I controlli partono da `eseguiControlli(record, ccnl, storico)` in `src/checks.js`. Un nuovo
+controllo dovrebbe:
+
+- attivarsi soltanto quando possiede tutti i dati necessari;
+- distinguere `ok`, `info`, `warn` e `alert` senza presentare una stima come certezza;
+- mostrare formula, valori utilizzati e fonte;
+- considerare anno, tipo di cedolino, settore e unità di misura;
+- avere un caso normale, uno anomalo e uno con dati mancanti nei test.
+
+#### Aggiornare fisco o CCNL
+
+- aggiungi un nuovo anno dentro `FISCO` senza sovrascrivere gli anni precedenti;
+- documenta la fonte normativa e aggiorna i test numerici;
+- per un CCNL separa l'identificazione (codice/titolo CNEL) dai parametri economici curati;
+- non inventare minimi, divisori o maggiorazioni quando il dato ufficiale non è disponibile.
+
+### Test, build e controlli prima di una Pull Request
+
+```bash
+node tests/parser.test.mjs
+node build.mjs
+git diff --check
+```
+
+Il primo comando carica gli script in un contesto isolato di Node e verifica parser,
+classificazione, controlli, CCNL, OCR testuale e moduli di settore. Il secondo ricrea
+`pwa/index.html` e fallisce se manca uno dei segnaposto del template. La CI esegue entrambi
+su ogni `push` e Pull Request.
+
+Per una modifica grafica, prova almeno:
+
+- import e schermata di verifica su desktop;
+- viewport mobile;
+- navigazione da tastiera e focus visibile;
+- modalità offline dopo il primo caricamento;
+- importazione di un backup creato dalla versione precedente.
+
+### Debug del parser
+
+Quando un valore è sbagliato, controlla nell'ordine:
+
+1. gli item prodotti da pdf.js/OCR (`str`, `x`, `y`, `w`, `h`);
+2. le righe restituite da `Parser.buildLines(items)`;
+3. `record.meta.candidates[path]`, con valori e metodi alternativi;
+4. `record.meta.fields[path]`, per confidenza e coordinate selezionate;
+5. `record.meta.reconciliation`, per capire quale combinazione di totali ha vinto;
+6. `record.meta.consistency` e `record.meta.qualita`, che spiegano il livello di verifica
+   richiesto.
+
+Non correggere un errore abbassando indiscriminatamente le soglie: può far funzionare un
+documento e rompere molti altri. Preferisci segnali indipendenti, come etichetta + geometria
++ ruolo della colonna + quadratura. Non scrivere in log nomi, codici fiscali o testo completo
+di un cedolino reale.
+
+### Build, PWA e deploy
+
+`build.mjs` parte da `src/template.html`, inserisce CSS, dati e script nei segnaposto,
+converte in Base64 icona, worker, WebAssembly e modello OCR e genera il nucleo applicativo
+in `pwa/index.html`. Manifest, Service Worker e icone restano file separati perché il browser
+li usa per installazione e cache.
+
+Il Service Worker adotta una strategia cache-first per gli asset della stessa origine. Quando
+pubblichi una modifica, aumenta `CACHE` in `pwa/sw.js`; durante l'attivazione le vecchie cache
+vengono eliminate. Il workflow `deploy-pages.yml` testa, compila e pubblica la cartella
+`pwa/` su GitHub Pages. `update-cnel.yml` rigenera settimanalmente soltanto
+`src/cnel-index.js` e crea un commit se l'Open Data è cambiato.
 
 - **Un solo file**: i worker girano da `blob:` URL e il dizionario OCR viene servito da un
   intercettatore di `fetch` interno al worker → funziona anche da `file://`, senza server.
