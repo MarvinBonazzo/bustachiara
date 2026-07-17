@@ -248,6 +248,23 @@ svg.chart { width: 100%; height: 150px; display: block; }
 .simple-alert.alert { background: var(--alert-bg); border-left-color: var(--alert); }
 .simple-alert b { display: block; }
 .detail-actions { justify-content: center; }
+.voice-simple-list { display: grid; gap: 0; }
+.voice-simple { position: relative; padding: 16px 34px 16px 0; border-bottom: 1px solid var(--sep); cursor: pointer; }
+.voice-simple:last-child { border-bottom: 0; }
+.voice-simple-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.voice-simple-head > div { min-width: 0; }
+.voice-simple-head b { display: block; font-size: 15.5px; }
+.voice-simple-head span { display: block; margin-top: 1px; color: var(--muted); font-size: 12px; }
+.voice-simple-head strong { flex: none; color: var(--brand); font-variant-numeric: tabular-nums; }
+.voice-simple.trattenuta .voice-simple-head strong { color: var(--alert); }
+.voice-simple.dato .voice-simple-head strong { color: var(--muted); font-size: 12px; }
+.voice-simple > p { margin: 5px 0 0; color: var(--muted); font-size: 13.5px; }
+.voice-simple > .voice-simple-check { color: #825300; font-weight: 650; }
+.voice-simple > .ibtn { position: absolute; right: 1px; top: 19px; }
+@media (max-width: 560px) {
+  .voice-simple-head { display: block; }
+  .voice-simple-head strong { display: block; margin-top: 5px; }
+}
 
 /* ============ Dettaglio ============ */
 .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 20px; font-size: 15px; }

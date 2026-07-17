@@ -84,8 +84,9 @@ economiche sono sempre indicate come importi lordi.
    valgono quanto i dati che confermi.*
 3. **Riassunto** → mostra il flusso economico riconciliato al 100%, commenti concreti e
    soltanto gli avvisi che richiedono attenzione.
-4. **Dettaglio** → mostra netto, dati utili, controlli urgenti e azioni sul record, senza
-   una lunga spiegazione ripetitiva per ogni singola riga.
+4. **Dettaglio** → mostra tutte le righe del cedolino. Per ciascuna conserva soltanto nome,
+   importo, significato in parole semplici e un controllo quando è davvero utile; base,
+   riferimenti e codici tecnici restano nella verifica e non appesantiscono la lettura.
 5. **Extra** → curiosità, dizionario, CCNL e fonti ufficiali. Le schede oggettive (TFR vs
    fondo pensione, quanto vale un'ora del tuo
    lavoro, quanti giorni di fila si può lavorare, quanto costi all'azienda, perché la 13ª
@@ -133,21 +134,25 @@ affidabilità:
   il risultato è ambiguo.
 
 Le correzioni alle causali proprietarie vengono apprese **solo sul dispositivo** e per lo
-specifico software paghe. Dalla volta successiva la stessa descrizione viene classificata
-come competenza, trattenuta o dato con il nome confermato dall'utente. Da **Backup** si può
+specifico software paghe. Inoltre l'app crea un profilo locale del formato per la coppia
+datore/software: conserva un hash del datore, i nomi dei campi confermati e l'eventuale CCNL,
+mai il PDF, il nome del datore, i testi o gli importi. Dalla volta successiva riusa queste
+conferme senza inventare valori mancanti. Da **Backup** si può
 anche controllare ed esportare un fixture per contribuire a nuovi test: identità, file ed
 estratti della pagina vengono rimossi e gli importi trasformati mantenendo la quadratura.
 Le causali proprietarie restano comunque da rileggere prima di pubblicarlo.
 
 I test di regressione usano esclusivamente dati inventati. Oltre ai fixture storici, la
-matrice settoriale copre 14 famiglie: LUL privato/Zucchetti, NoiPA, Cassa Edile,
-agricoltura, lavoro domestico, cooperativa, somministrazione, dirigenti, turni e
-maggiorazioni, tredicesima, quattordicesima, conguaglio fiscale, cessazione e OCR rumoroso.
-Nel complesso la matrice verifica 46 voci economiche. Si eseguono con:
+matrice settoriale copre 22 famiglie: LUL privato/Zucchetti, NoiPA, Cassa Edile,
+agricoltura, lavoro domestico, cooperativa, somministrazione, dirigenti, turni,
+mensilità aggiuntive, conguaglio, cessazione, OCR rumoroso, sport, spettacolo, marittimi,
+sanità, CIG/FIS, assenze tutelate, assistenza fiscale, previdenza complementare e part-time.
+Nel complesso la matrice verifica 81 voci economiche. Si eseguono con:
 
 ```bash
 node tests/parser.test.mjs
 node tests/ai-ocr.test.mjs
+node tests/recognition.test.mjs
 node tests/ui-pwa.test.mjs
 ```
 
@@ -183,9 +188,9 @@ personali — l'unica "busta" inclusa è l'esempio con dati inventati (Mario Ros
   soltanto le risorse statiche e gli aggiornamenti provenienti dalla stessa installazione
   GitHub Pages/localhost; non autorizza API, analytics o server di terzi. Puoi verificarlo
   negli strumenti sviluppatore: durante l'analisi non parte alcuna richiesta esterna.
-- pdf.js, Tesseract e il dizionario italiano sono inglobati nel file principale. Se due
-  letture Tesseract restano incerte, l'app può richiedere dallo **stesso dominio** un secondo
-  OCR locale PP-OCRv5/ONNX. I suoi file vengono scaricati solo in quel caso, conservati nella
+- pdf.js, Tesseract e il dizionario italiano sono inglobati nel file principale. Ogni
+  scansione viene letta due volte da Tesseract e una volta dal secondo OCR locale
+  PP-OCRv5/ONNX. I suoi file vengono richiesti dallo **stesso dominio**, conservati nella
   cache PWA e poi eseguiti nel browser; il documento e il testo riconosciuto non fanno parte
   della richiesta. Non vengono contattati CDN, API o servizi Google.
 - La cronologia sta nel **localStorage del browser**. Il PDF originale **non** viene salvato:
@@ -359,12 +364,12 @@ modificata nel repository.
 |---|---|---|
 | Interfaccia | HTML5, CSS e JavaScript vanilla | schermate, verifica manuale, archivio e backup |
 | PDF nativi | pdf.js 3.11.174 | testo, dimensioni, pagina e coordinate di ogni elemento |
-| Scansioni e foto | tesseract.js 5.1.1 + PP-OCRv5/ONNX Runtime Web come seconda lettura opzionale | OCR interamente nel browser |
+| Scansioni e foto | due letture tesseract.js 5.1.1 + PP-OCRv5/ONNX Runtime Web | tre letture OCR interamente nel browser |
 | Parser | regole JavaScript, geometria, dizionari e riconciliazione matematica | trasforma parole e coordinate in un cedolino strutturato |
 | Classificazione | codici noti, espressioni regolari, sinonimi, trigrammi e distanza testuale | riconosce abbreviazioni, refusi OCR e causali simili |
 | CCNL | archivio curato + indice Open Data CNEL generato | identifica il contratto e abilita i controlli disponibili |
 | Controlli | formule esplicite in JavaScript | quadrature, contributi, imposte, TFR, ratei e confronti CCNL |
-| Persistenza | `localStorage` | conserva record confermati, CCNL locali e correzioni sul dispositivo |
+| Persistenza | `localStorage` | conserva record confermati, CCNL, correzioni e profili di formato locali |
 | PWA | Web App Manifest, Service Worker e Cache Storage | installazione e funzionamento offline |
 | Sicurezza | Content-Security-Policy e assenza di endpoint applicativi | impedisce connessioni verso servizi esterni |
 | Build e pubblicazione | Node.js, script `.mjs`, GitHub Actions e GitHub Pages | test, assemblaggio e deploy statico |
@@ -382,6 +387,7 @@ git clone https://github.com/ShivenBonazzo/bustachiara.git
 cd bustachiara
 node tests/parser.test.mjs
 node tests/ai-ocr.test.mjs
+node tests/recognition.test.mjs
 node tests/ui-pwa.test.mjs
 node build.mjs
 python3 -m http.server 8000 --directory pwa
@@ -404,7 +410,7 @@ BustaChiara/
 ├── pwa/               ← versione installabile, pronta per GitHub Pages
 │   ├── index.html     (generato automaticamente durante il deploy, non versionato)
 │   ├── manifest.webmanifest, sw.js (offline totale dopo la prima visita)
-│   ├── ai/            (PP-OCRv5 + ONNX Runtime, caricati solo quando servono)
+│   ├── ai/            (PP-OCRv5 + ONNX Runtime, eseguiti localmente sulle scansioni)
 │   └── icons/         (foglio illuminato + tagli PWA generati da make-icons.py)
 ├── build.mjs          ← assembla pwa/index.html dai sorgenti
 ├── make-icons.py      ← rigenera le icone PWA dalla sorgente (richiede Pillow)
@@ -417,12 +423,12 @@ BustaChiara/
 │   ├── cnel-index.js  ← 1.143 codici ufficiali, file generato automaticamente
 │   ├── parser-sectors.js ← moduli terminologici e rilevamento dei settori
 │   ├── parser.js      ← parser multi-layout, candidati, provenienza e controlli di coerenza
-│   ├── ai-ocr.js      ← secondo OCR locale, attivazione e fusione prudente dei risultati
+│   ├── ai-ocr.js      ← terza lettura OCR locale e fusione prudente dei risultati
 │   ├── checks.js      ← motore dei controlli
-│   └── ui.js          ← interfaccia, OCR adattivo, apprendimento locale, cronologia, export
+│   └── ui.js          ← interfaccia, consenso OCR, profili locali, cronologia, export
 ├── tests/
 │   ├── parser.test.mjs
-│   ├── parser-matrix.test.mjs + ai-ocr.test.mjs + ui-pwa.test.mjs
+│   ├── parser-matrix.test.mjs + ai-ocr.test.mjs + recognition.test.mjs + ui-pwa.test.mjs
 │   └── fixtures/      ← soli layout e dati inventati, mai cedolini reali
 └── vendor/            ← librerie inglobate alla build
     ├── pdf.min.js + pdf.worker.min.js        (pdf.js 3.11.174, Apache-2.0)
@@ -437,11 +443,10 @@ flowchart TD
     A["PDF, scansione o foto"] --> B{"PDF con testo sufficiente?"}
     B -->|Sì| C["pdf.js: testo + pagina + coordinate"]
     B -->|No o solo in alcune zone| D["Canvas + preparazione immagine"]
-    D --> E["Due letture Tesseract locali"]
-    E --> Q{"Risultato ancora debole?"}
-    Q -->|Sì| R["PP-OCRv5 locale: seconda opinione"]
-    Q -->|No| F
-    R --> S["Fusione prudente: aggiunge dati mancanti, non forza conflitti"]
+    D --> E["Lettura Tesseract normale"]
+    E --> Q["Lettura Tesseract con contrasto e segmentazione diversi"]
+    Q --> R["PP-OCRv5 locale: terza lettura indipendente"]
+    R --> S["Consenso: accordi premiati, conflitti conservati"]
     S --> F
     C --> F["Item normalizzati x, y, larghezza, altezza, testo"]
     F --> G["Ricostruzione di righe, colonne e sezioni"]
@@ -460,8 +465,8 @@ In dettaglio:
 2. Per un PDF nativo pdf.js produce elementi nel formato `{ str, x, y, w, h }`. Se una
    pagina contiene troppo poco testo, l'OCR integra soltanto quella pagina; immagini e
    scansioni passano invece interamente da Tesseract.
-3. Se entrambe le letture Tesseract sono ancora deboli, `src/ai-ocr.js` carica PP-OCRv5
-   dallo stesso dominio. La seconda lettura può aggiungere parole in zone mancanti; quando
+3. `src/ai-ocr.js` carica PP-OCRv5 dallo stesso dominio per ogni scansione. La terza lettura
+   può aggiungere parole in zone mancanti e viene anche analizzata separatamente; quando
    un testo sovrapposto è diverso viene conservato come alternativa e non sostituito usando
    confidenze non calibrate tra motori differenti. Errori, assenza di rete o dispositivi non
    compatibili lasciano intatto il risultato Tesseract.
@@ -601,6 +606,7 @@ controllo dovrebbe:
 ```bash
 node tests/parser.test.mjs
 node tests/ai-ocr.test.mjs
+node tests/recognition.test.mjs
 node tests/ui-pwa.test.mjs
 node build.mjs
 git diff --check
@@ -608,9 +614,11 @@ git diff --check
 
 Il primo comando carica gli script in un contesto isolato di Node e verifica parser,
 classificazione, controlli, CCNL, OCR testuale, moduli di settore e matrice multi-layout.
-Il secondo verifica soglia di attivazione, geometria, decoder, fusione e hash degli asset
-del secondo OCR. La build ricrea `pwa/index.html` e fallisce se manca uno dei segnaposto del
-template. La CI esegue tutti questi controlli su ogni `push` e Pull Request.
+Il secondo verifica geometria, decoder, fusione e hash degli asset del secondo motore OCR;
+il terzo controlla che le tre letture siano eseguite e che il consenso prevalga su una
+lettura isolata senza nascondere i conflitti. La build ricrea `pwa/index.html` e fallisce se
+manca uno dei segnaposto del template. La CI esegue tutti questi controlli su ogni `push` e
+Pull Request.
 
 Per una modifica grafica, prova almeno:
 

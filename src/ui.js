@@ -43,7 +43,7 @@ function recordIdentityKey(record) { return [periodoKey(record.periodo), employe
 /* ---------- archivio locale ---------- */
 const STORE_KEY = 'bustachiara_v1';
 const Store = {
-  data: { records: [], customCcnl: [], voiceAliases: [] },
+  data: { records: [], customCcnl: [], voiceAliases: [], layoutProfiles: [] },
   load() {
     try {
       const d = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -51,6 +51,7 @@ const Store = {
         this.data = Object.assign(this.data, d);
         delete this.data.prefs; // migrazione: la vecchia modalità semplificata non esiste più
         this.data.voiceAliases = Array.isArray(d.voiceAliases) ? d.voiceAliases : [];
+        this.data.layoutProfiles = Array.isArray(d.layoutProfiles) ? d.layoutProfiles : [];
         this.data.records = this.data.records.map(record => {
           record.documento = record.documento || { tipo: 'ordinario' };
           Parser.ripulisciRecord(record);
@@ -79,6 +80,68 @@ function recSorted() { return [...Store.data.records].sort((a, b) => periodoKey(
 function aliasKey(value) {
   return Parser.normalizzaTesto(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
     .replace(/[^A-Z0-9%]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/* Impara il formato senza conservare il documento né il nome dell'azienda.
+   La chiave del datore è un hash locale non reversibile nell'uso normale; il
+   profilo contiene soltanto campi confermati, software e contratto scelto. */
+function localProfileHash(value) {
+  let hash = 2166136261;
+  for (const char of String(value || '')) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+function layoutProfileKey(record) {
+  const employer = aliasKey(record && record.azienda && record.azienda.nome || '');
+  if (!employer) return null;
+  const software = aliasKey(record && record.meta && record.meta.software || 'FORMATO GENERICO');
+  const sector = aliasKey(record && record.meta && record.meta.settore || 'PRIVATO');
+  return `${software}|${sector}|${localProfileHash(employer)}`;
+}
+function applicaProfiloLayout(record) {
+  const key = layoutProfileKey(record);
+  const profile = key && (Store.data.layoutProfiles || []).find(item => item.key === key);
+  if (!profile) return;
+  if (!record.ccnlId && profile.ccnlId) record.ccnlId = profile.ccnlId;
+  record.ccnl = record.ccnl || {};
+  if (!record.ccnl.cnel && profile.cnel) record.ccnl.cnel = profile.cnel;
+  record.meta = record.meta || {};
+  record.meta.fields = record.meta.fields || {};
+  for (const [path, confirmations] of Object.entries(profile.fields || {})) {
+    if (getPath(record, path) == null || confirmations < 2) continue;
+    const current = record.meta.fields[path] || {};
+    if ((Number(current.confidence) || 0) >= .82) continue;
+    record.meta.fields[path] = Object.assign({}, current, {
+      confidence: Math.max(Number(current.confidence) || 0, .78),
+      method: 'profilo locale di formato già confermato', learnedLocally: true,
+    });
+  }
+  record.meta.layoutProfile = { matched: true, samples: profile.samples || 1 };
+}
+function imparaProfiloLayout(record) {
+  const key = layoutProfileKey(record);
+  if (!key) return;
+  const profiles = Store.data.layoutProfiles || (Store.data.layoutProfiles = []);
+  const old = profiles.find(item => item.key === key);
+  const fields = Object.assign({}, old && old.fields || {});
+  const paths = Object.entries(record.meta && record.meta.fields || {})
+    .filter(([path, metadata]) => getPath(record, path) != null && metadata && metadata.confirmed === true)
+    .map(([path]) => path);
+  for (const path of paths) fields[path] = Math.min(30, (fields[path] || 0) + 1);
+  const profile = {
+    key,
+    software: record.meta && record.meta.software || 'Formato generico',
+    sector: record.meta && record.meta.settore || 'privato-lul',
+    fields,
+    ccnlId: record.ccnlId || null,
+    cnel: record.ccnl && record.ccnl.cnel || null,
+    samples: Math.min(99, (old && old.samples || 0) + 1),
+    updatedAt: new Date().toISOString(),
+  };
+  if (old) profiles[profiles.indexOf(old)] = profile; else profiles.push(profile);
+  if (profiles.length > 100) Store.data.layoutProfiles = profiles.slice(-100);
 }
 
 function applicaAliasLocali(record) {
@@ -145,17 +208,36 @@ function iBtn(key) { return `<button class="ibtn" data-info="${esc(key)}" title=
 let detailVoci = []; // voci del record mostrato in Dettaglio, per i popup
 function vociInfoHtml(v) {
   const s = spiegaVoce(v);
-  const catKey = s.cat === 'trattenuta' ? 'trattenuta' : (s.cat === 'competenza' ? 'competenza' : 'dato');
-  const catG = GLOSSARIO[catKey];
-  return `<p class="muted small">${esc(catG ? catG.nome + ': ' + primaFrase(catG.testo) : '')}</p>
-    <p>${esc(s.cosa)}</p>
-    ${s.controlla ? `<p><b>Da controllare:</b> ${esc(s.controlla)}</p>` : ''}
+  return `<p>${esc(spiegazioneBreveVoce(v, s))}</p>
+    ${controlloUtileVoce(v, s) ? `<p><b>Controllo utile:</b> ${esc(controlloUtileVoce(v, s))}</p>` : ''}
     ${fontiHTML(s.fonti)}`;
 }
 
 /* ---------- spiegazione voci ---------- */
 function spiegaVoce(v) {
   return classificaVoce(v);
+}
+function spiegazioneBreveVoce(v, spiegazione = spiegaVoce(v)) {
+  const fallback = spiegazione.cat === 'trattenuta'
+    ? 'Questa somma viene tolta dal totale prima di arrivare al netto.'
+    : spiegazione.cat === 'competenza'
+      ? 'Questa somma viene aggiunta alle competenze del mese.'
+      : 'È un dato usato per spiegare o calcolare il cedolino; da solo non cambia il netto.';
+  let text = primaFrase(String(spiegazione.cosa || '').replace(/\s*Riconoscimento offline[\s\S]*$/i, '').trim()) || fallback;
+  text = text.replace(/\bcausale\b/gi, 'voce').replace(/\bgestionale\b/gi, 'software paghe');
+  return text.length > 230 ? text.slice(0, 227).replace(/\s+\S*$/, '') + '…' : text;
+}
+function controlloUtileVoce(v, spiegazione = spiegaVoce(v)) {
+  const confidence = Number(v.meta && v.meta.confidence);
+  const uncertain = Number.isFinite(confidence) && confidence < .7;
+  const computed = v.base != null && v.rifQta != null && (v.competenza != null || v.trattenuta != null);
+  if (computed) {
+    const amount = Math.abs(Number(v.competenza ?? v.trattenuta) || 0);
+    const expected = Math.abs(Number(v.base) * Number(v.rifQta) * (/^%$/.test(v.rifUnita || '') ? .01 : 1));
+    if (expected && Math.abs(expected - amount) > Math.max(.05, amount * .02)) return 'Il calcolo base × quantità non coincide con l’importo: confronta questa riga col documento.';
+  }
+  if (uncertain) return spiegazione.controlla || 'La lettura di questa riga non è abbastanza sicura: confronta nome e importo col documento.';
+  return '';
 }
 
 /* ---------- navigazione ---------- */
@@ -598,6 +680,7 @@ async function ocr(canvas, status) { return (await ocrData(canvas, status)).text
 
 function mergeOcrPasses(primary, secondary) {
   const words = [...(primary.words || [])];
+  const alternatives = [];
   for (const word of secondary.words || []) {
     if (!word.text || !word.bbox) continue;
     const cx = (word.bbox.x0 + word.bbox.x1) / 2, cy = (word.bbox.y0 + word.bbox.y1) / 2;
@@ -605,29 +688,44 @@ function mergeOcrPasses(primary, secondary) {
       if (!existing.bbox) return false;
       const ex = (existing.bbox.x0 + existing.bbox.x1) / 2, ey = (existing.bbox.y0 + existing.bbox.y1) / 2;
       const tolerance = Math.max(8, word.bbox.y1 - word.bbox.y0);
-      return Math.abs(cx - ex) <= tolerance && Math.abs(cy - ey) <= tolerance
-        && aliasKey(existing.text) === aliasKey(word.text);
+      const overlap = Math.max(0, Math.min(existing.bbox.x1, word.bbox.x1) - Math.max(existing.bbox.x0, word.bbox.x0))
+        * Math.max(0, Math.min(existing.bbox.y1, word.bbox.y1) - Math.max(existing.bbox.y0, word.bbox.y0));
+      const existingArea = Math.max(1, (existing.bbox.x1 - existing.bbox.x0) * (existing.bbox.y1 - existing.bbox.y0));
+      const wordArea = Math.max(1, (word.bbox.x1 - word.bbox.x0) * (word.bbox.y1 - word.bbox.y0));
+      return Math.abs(cx - ex) <= tolerance && Math.abs(cy - ey) <= tolerance && overlap / Math.min(existingArea, wordArea) >= .25;
     });
     if (duplicateIndex < 0) words.push(word);
-    else if ((word.confidence || 0) > (words[duplicateIndex].confidence || 0)) words[duplicateIndex] = word;
+    else {
+      const existing = words[duplicateIndex];
+      const same = aliasKey(existing.text) === aliasKey(word.text);
+      if (!same) alternatives.push({ primary: existing, secondary: word });
+      // Sono due passaggi dello stesso motore e la scala è confrontabile: nella
+      // versione fusa una posizione può avere un solo token, mentre i due esiti
+      // indipendenti restano disponibili separatamente per il consenso.
+      if ((word.confidence || 0) > (existing.confidence || 0)) words[duplicateIndex] = word;
+    }
   }
-  return Object.assign({}, primary, { words, text: words.map(word => word.text).join(' ') });
+  return Object.assign({}, primary, { words, text: words.map(word => word.text).join(' '), _passAlternatives: alternatives });
 }
 
 async function ocrDataMulti(canvas, status) {
-  const primary = await ocrData(canvas, (message, progress) => status && status('passaggio 1/2: ' + message, (progress || 0) * .62), '3');
-  const usable = (primary.words || []).filter(word => word.text && word.text.trim());
-  const mean = usable.length ? usable.reduce((sum, word) => sum + (word.confidence || 0), 0) / usable.length : 0;
-  const needsSecondPass = mean < 78 || usable.length < 55;
-  if (!needsSecondPass) return primary;
-  status && status('passaggio 2/2: miglioro contrasto e tabelle…', .64);
+  const primary = await ocrData(canvas, (message, progress) => status && status('lettura 1/3: ' + message, (progress || 0) * .48), '3');
+  // La seconda lettura non è più riservata ai casi già giudicati deboli: un
+  // numero apparentemente sicuro può essere quello sbagliato. Ogni scansione
+  // viene quindi riletta con segmentazione e contrasto differenti.
+  status && status('lettura 2/3: miglioro contrasto e tabelle…', .49);
   const thresholded = localThresholdCanvas(canvas);
-  const secondary = await ocrData(thresholded, (message, progress) => status && status('passaggio 2/2: ' + message, .64 + (progress || 0) * .18), '6');
+  const secondary = await ocrData(thresholded, (message, progress) => status && status('lettura 2/3: ' + message, .49 + (progress || 0) * .25), '6');
   const merged = mergeOcrPasses(primary, secondary);
-  if (!AiOcr.shouldUseSpecialist(merged)) return merged;
+  merged._primaryResult = primary;
+  merged._secondaryResult = secondary;
   try {
-    const specialist = await AiOcr.recognize(canvas, (message, progress) => status && status(message, .82 + (progress || 0) * .18));
-    return AiOcr.mergeSpecialist(merged, specialist);
+    const specialist = await AiOcr.recognize(canvas, (message, progress) => status && status(`lettura 3/3: ${message}`, .75 + (progress || 0) * .25));
+    const result = AiOcr.mergeSpecialist(merged, specialist);
+    // Conserviamo anche l'esito indipendente: il parser lo valuta separatamente
+    // prima di applicare il consenso, invece di appiattire subito i conflitti.
+    result._specialistResult = specialist;
+    return result;
   } catch (_) {
     // Gli asset AI sono opzionali: senza rete/cache o su browser incompatibili
     // la pipeline prosegue sempre con le due letture Tesseract già completate.
@@ -728,13 +826,70 @@ function unisciEstrazioni(a, b) {
   base.warnings = [...new Set([...(base.warnings || []), ...(altro.warnings || [])])];
   return base;
 }
+
+function consensusValueKey(value) {
+  if (typeof value === 'number') return `n:${Math.round(value * 100) / 100}`;
+  if (value && typeof value === 'object') {
+    const ordered = Object.keys(value).sort().reduce((result, key) => { result[key] = value[key]; return result; }, {});
+    return `o:${JSON.stringify(ordered)}`;
+  }
+  return `s:${aliasKey(value)}`;
+}
+function unisciEstrazioniMultiple(extractions) {
+  const valid = (extractions || []).filter(item => item && item.record);
+  if (!valid.length) throw new Error('nessuna lettura disponibile');
+  const votes = valid.map(item => JSON.parse(JSON.stringify(item.record)));
+  let result = valid[0];
+  for (let index = 1; index < valid.length; index++) result = unisciEstrazioni(result, valid[index]);
+  const conflicts = {};
+  result.record.meta = result.record.meta || {};
+  result.record.meta.fields = result.record.meta.fields || {};
+  for (const path of CAMPI_SCALARI) {
+    const groups = new Map();
+    votes.forEach((record, reader) => {
+      const value = getPath(record, path); if (value == null) return;
+      const key = consensusValueKey(value);
+      if (!groups.has(key)) groups.set(key, { value, readers: [], confidence: 0 });
+      const group = groups.get(key);
+      group.readers.push(reader);
+      group.confidence = Math.max(group.confidence, Parser.fieldConfidence(record, path) || 0);
+    });
+    const ranked = [...groups.values()].sort((left, right) => right.readers.length - left.readers.length || right.confidence - left.confidence);
+    if (!ranked.length) continue;
+    if (ranked[0].readers.length >= 2) {
+      setPath(result.record, path, ranked[0].value);
+      result.record.meta.fields[path] = Object.assign({}, result.record.meta.fields[path], {
+        confidence: Math.max(Number(result.record.meta.fields[path] && result.record.meta.fields[path].confidence) || 0, Math.min(.98, .86 + ranked[0].readers.length * .03)),
+        method: `consenso di ${ranked[0].readers.length} letture locali`, consensusReaders: ranked[0].readers.length,
+      });
+    } else if (ranked.length > 1) {
+      conflicts[path] = ranked.slice(0, 4).map(group => group.value);
+      const current = result.record.meta.fields[path] || {};
+      result.record.meta.fields[path] = Object.assign({}, current, { confidence: Math.min(Number(current.confidence) || .62, .62), conflictingReads: ranked.length });
+    }
+  }
+  for (const voice of result.record.voci || []) {
+    const amount = voice.competenza ?? voice.trattenuta;
+    const readers = votes.filter(record => (record.voci || []).some(candidate => aliasKey(candidate.descrizione) === aliasKey(voice.descrizione)
+      && Math.abs(Number(candidate.competenza ?? candidate.trattenuta) - Number(amount)) < .01)).length;
+    voice.meta = Object.assign({}, voice.meta, { consensusReaders: readers, confidence: Math.max(Number(voice.meta && voice.meta.confidence) || 0, readers >= 2 ? .9 : .58) });
+  }
+  Parser.ripulisciRecord(result.record);
+  result.record.meta.consensusConflicts = conflicts;
+  result.record.meta.recognition = {
+    strategy: 'multi-lettura-con-controlli', readers: valid.length,
+    checks: ['testo e coordinate', 'contrasto alternativo', 'PP-OCR locale', 'quadrature contabili', 'profilo locale confermato'],
+  };
+  return result;
+}
 /* Pipeline completa: una o più immagini → record da verificare. */
 async function parseDaOcr(canvases, status) {
-  const pagineItems = [];
+  const primaryPages = [];
+  const secondaryPages = [];
+  const specialistPages = [];
   const pageSizes = [];
   const previewPages = [];
   const corrections = [];
-  let testo = '';
   for (let i = 0; i < canvases.length; i++) {
     const prepared = prepareOcrCanvas(canvases[i]);
     previewPages.push(canvasPreviewDataUrl(prepared));
@@ -742,21 +897,28 @@ async function parseDaOcr(canvases, status) {
     pageSizes.push({ width: 600, height: prepared.height * scale });
     if (prepared._ocrCorrections && prepared._ocrCorrections.length) corrections.push(`pagina ${i + 1}: ${prepared._ocrCorrections.join(', ')}`);
     const data = await ocrDataMulti(prepared, (m, f) => status && status(`${canvases.length > 1 ? 'pagina ' + (i + 1) + '/' + canvases.length + ': ' : ''}${m}`, ((i + (f || 0)) / canvases.length)));
-    const items = ocrToItems(data, prepared);
-    pagineItems.push(items);
-    // testo ricostruito dalle parole già ripulite dal rumore, riga per riga
-    const perRiga = new Map();
-    for (const it of items) {
-      const k = Math.round(it.y / 3);
-      if (!perRiga.has(k)) perRiga.set(k, []);
-      perRiga.get(k).push(it);
-    }
-    testo += [...perRiga.entries()].sort((a, b) => b[0] - a[0])
-      .map(([, cs]) => cs.sort((a, b) => a.x - b.x).map(c => c.str).join(' ')).join('\n') + '\n';
+    primaryPages.push(ocrToItems(data._primaryResult || data, prepared));
+    secondaryPages.push(ocrToItems(data._secondaryResult || data, prepared));
+    specialistPages.push(data._specialistResult ? ocrToItems(data._specialistResult, prepared) : []);
   }
-  const daCoordinate = Parser.parsePdfPages(pagineItems, { source: 'ocr', pageSizes });
-  const daTesto = Parser.parseFreeText(testo);
-  const esito = unisciEstrazioni(daCoordinate, daTesto);
+  const textForPages = pages => {
+    let output = '';
+    for (const page of pages) {
+      const rows = new Map();
+      for (const item of page) { const key = Math.round(item.y / 3); if (!rows.has(key)) rows.set(key, []); rows.get(key).push(item); }
+      output += [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, cells]) => cells.sort((a, b) => a.x - b.x).map(cell => cell.str).join(' ')).join('\n') + '\n';
+    }
+    return output;
+  };
+  const parseEngine = (pages, source) => unisciEstrazioni(
+    Parser.parsePdfPages(pages, { source, pageSizes }),
+    Parser.parseFreeText(textForPages(pages)),
+  );
+  // Un solo voto per motore OCR: coordinate e testo sono due interpretazioni
+  // dello stesso flusso di parole e vengono prima fuse, non contate due volte.
+  const engineExtractions = [parseEngine(primaryPages, 'ocr-tesseract-1'), parseEngine(secondaryPages, 'ocr-tesseract-2')];
+  if (specialistPages.some(page => page.length)) engineExtractions.push(parseEngine(specialistPages, 'ocr-pp'));
+  const esito = unisciEstrazioniMultiple(engineExtractions);
   esito.warnings = ['Lettura ottica (OCR): i numeri possono contenere errori di lettura, controlla TUTTI i campi prima di salvare.',
     ...(corrections.length ? [`Correzioni automatiche immagine — ${corrections.join('; ')}.`] : []),
     ...esito.warnings.filter(w => !/precisione limitata/.test(w))];
@@ -773,6 +935,7 @@ function emptyRecord() {
 }
 function startVerifica(record, warnings, previewPages = []) {
   if (!record.id) record.id = uid();
+  applicaProfiloLayout(record);
   applicaAliasLocali(record);
   Parser.ripulisciRecord(record);
   record.meta = record.meta || { fonte: 'manuale' };
@@ -1072,6 +1235,7 @@ function salvaDraft() {
   if (dup) Store.data.records = Store.data.records.filter(x => x.id !== dup.id);
   r.derivati = Parser.derivaIndice(r);
   imparaCorrezioni(r);
+  imparaProfiloLayout(r);
   r.meta.importedAt = new Date().toISOString();
   const i = Store.data.records.findIndex(x => x.id === r.id);
   if (i >= 0) Store.data.records[i] = r; else Store.data.records.push(r);
@@ -1119,14 +1283,21 @@ function findingHTML(f) {
   </div></div>`;
 }
 function vociTableHTML(r) {
-  return `<div class="tablewrap"><table class="voci"><thead><tr><th class="col-code">Codice</th><th>Descrizione</th><th class="num col-base">Base ${iBtn('base')}</th><th class="num col-rif">Rif. ${iBtn('riferimento')}</th><th class="num">Trattenuta ${iBtn('trattenuta')}</th><th class="num">Competenza ${iBtn('competenza')}</th><th></th></tr></thead>
-  <tbody>${r.voci.map((v, i) => {
+  if (!r.voci || !r.voci.length) return '<p class="muted">Non sono state trovate righe retributive da spiegare.</p>';
+  return `<div class="voice-simple-list">${r.voci.map((v, i) => {
     const s = spiegaVoce(v);
-    return `<tr class="voce-row" data-vocei="${i}"><td class="col-code">${esc(v.codice || '')}</td><td>${esc(v.descrizione)} <span class="badge ${s.cat === 'trattenuta' ? 'tratt' : s.cat === 'competenza' ? 'comp' : 'dato'}">${s.cat}</span></td>
-    <td class="num col-base">${v.base != null ? fmtEur(v.base, 5).replace(/(,\d\d)\d*$/, '$1') : ''}</td><td class="num col-rif">${v.rifQta != null ? fmtEur(v.rifQta, 2) + ' ' + esc(v.rifUnita || (v.rifTesto || '')) : esc(v.rifTesto || '')}</td>
-    <td class="num">${v.trattenuta != null ? fmtEur(v.trattenuta) : ''}</td><td class="num">${v.competenza != null ? fmtEur(v.competenza) : (v.costoAzienda != null ? '(' + fmtEur(v.costoAzienda) + ' a carico azienda)' : '')}</td>
-    <td><button class="ibtn" data-vocei="${i}" title="Spiegazione">i</button></td></tr>`;
-  }).join('')}</tbody></table></div>`;
+    const amount = v.trattenuta != null ? `${Number(v.trattenuta) < 0 ? '+' : '−'} ${fmtEur(Math.abs(v.trattenuta))} €`
+      : v.competenza != null ? `${Number(v.competenza) < 0 ? '−' : '+'} ${fmtEur(Math.abs(v.competenza))} €`
+        : v.costoAzienda != null ? `${fmtEur(v.costoAzienda)} € (azienda)` : 'Dato informativo';
+    const original = v.descrizione && aliasKey(v.descrizione) !== aliasKey(s.nome) ? v.descrizione : '';
+    const usefulCheck = controlloUtileVoce(v, s);
+    return `<article class="voce-row voice-simple ${s.cat}" data-vocei="${i}">
+      <div class="voice-simple-head"><div><b>${esc(s.nome)}</b>${original ? `<span>${esc(original)}</span>` : ''}</div><strong>${esc(amount)}</strong></div>
+      <p>${esc(spiegazioneBreveVoce(v, s))}</p>
+      ${usefulCheck ? `<p class="voice-simple-check">${esc(usefulCheck)}</p>` : ''}
+      <button class="ibtn" data-vocei="${i}" title="Approfondisci" aria-label="Approfondisci ${esc(s.nome)}">i</button>
+    </article>`;
+  }).join('')}</div>`;
 }
 
 function importoVoci(record, regex, used = new Set()) {
@@ -1162,11 +1333,31 @@ function commentiSemplici(record) {
   addExtra('Mensilità aggiuntive', importoVoci(record, /13.?ma|tredicesim|14.?ma|quattordicesim|gratifica\s+natalizia/i, used), result =>
     `Tredicesima o quattordicesima hanno aggiunto ${fmtEur(result.totale)} € lordi in questo cedolino.`);
 
+  addExtra('Rimborsi', importoVoci(record, /rimborso|trasferta.*(?:esente|rimbor)|pie.*lista|indennit[aà].*chilometr/i, used), result =>
+    `Rimborsi e trasferte riconosciuti nel cedolino ammontano a ${fmtEur(result.totale)} €. Possono avere regole fiscali diverse dallo stipendio ordinario.`);
+  addExtra('Conguagli e crediti', importoVoci(record, /conguaglio.*credito|credito.*(?:irpef|730)|rimborso.*730|trattamento\s+integrativo/i, used), result =>
+    `Crediti fiscali o conguagli a tuo favore hanno aggiunto ${fmtEur(result.totale)} € questo mese.`);
+  const paidAbsence = importoVoci(record, /malatt|maternit|paternit|infortun|ferie\s+godut|permess|rol\s+godut|conged/i, used);
+  if (paidAbsence.totale) comments.push({ title: 'Assenze pagate', text: `Nel cedolino compaiono ${fmtEur(paidAbsence.totale)} € legati a ferie, permessi o altre assenze tutelate. Non sono necessariamente soldi in più: spesso sostituiscono la paga ordinaria delle ore non lavorate.` });
+
+  const totals = record.totali || {}, derivati = record.derivati || {};
+  if (totals.competenze > 0 && totals.trattenute != null) {
+    comments.push({ title: 'Dal lordo al netto', text: `Su ${fmtEur(totals.competenze)} € di competenze, ${fmtEur(totals.trattenute)} € sono stati trattenuti: circa il ${fmtEur(totals.trattenute / totals.competenze * 100, 0)}%. Il netto finale è ${fmtEur(totals.netto)} €.` });
+  }
+  const contributions = Math.max(0, Number(derivati.ivs && derivati.ivs.importo) || 0) + Math.max(0, Number(derivati.fis && derivati.fis.importo) || 0);
+  if (contributions) comments.push({ title: 'Contributi', text: `${fmtEur(contributions)} € risultano destinati a pensione e tutele previdenziali. Sono trattenute, ma non sono imposte.` });
+  const taxes = Math.max(0, Number(derivati.ritenuteIrpef) || 0) + Math.max(0, Number(derivati.addRegionale) || 0) + Math.max(0, Number(derivati.addComunale) || 0);
+  if (taxes) comments.push({ title: 'Imposte', text: `IRPEF e addizionali riconosciute ammontano a ${fmtEur(taxes)} €. Conguagli e detrazioni possono far cambiare questa cifra da un mese all’altro.` });
+  const forcedDeductions = (record.voci || []).filter(voice => voice.trattenuta != null && /cessione|quinto|pignor|delegazione|prestito/i.test(voice.descrizione || '')).reduce((sum, voice) => sum + Number(voice.trattenuta || 0), 0);
+  if (forcedDeductions) comments.push({ title: 'Prestiti o trattenute personali', text: `${fmtEur(forcedDeductions)} € sono stati sottratti per cessioni, prestiti o pignoramenti riconosciuti nel cedolino.` });
+
   const ferie = record.ratei && record.ratei.ferie;
   if (ferie && ferie.saldo != null) {
     const unita = /^(?:ORE|ORA|H)$/i.test(ferie.unita || '') ? 'ore' : 'giorni';
     comments.push({ title: 'Riposo disponibile', text: `Ti restano ${fmtEur(ferie.saldo, 1)} ${unita} di ferie pagate.` });
   }
+  const permessi = record.ratei && record.ratei.permessi;
+  if (permessi && permessi.saldo != null) comments.push({ title: 'Permessi disponibili', text: `Il saldo indicato è ${fmtEur(permessi.saldo, 1)} ${/^(?:ORE|ORA|H)$/i.test(permessi.unita || '') ? 'ore' : 'giorni'} di permesso.` });
   const tfr = record.tfr || {};
   if (tfr.quotaMese != null) comments.push({ title: 'TFR', text: `Questo mese sono stati messi da parte ${fmtEur(tfr.quotaMese)} € di TFR.` });
 
@@ -1178,7 +1369,7 @@ function commentiSemplici(record) {
     if (Math.abs(delta) >= .01) comments.push({ title: 'Rispetto al mese prima', text: `Hai ricevuto ${fmtEur(Math.abs(delta))} € netti ${delta > 0 ? 'in più' : 'in meno'} rispetto a ${periodoLabel(previous.periodo)}.` });
   }
   if (!comments.length) comments.push({ title: 'Questo mese', text: 'Non risultano compensi extra riconoscibili. Il cedolino mostra soprattutto la retribuzione ordinaria.' });
-  return comments.slice(0, 6);
+  return comments.slice(0, 12);
 }
 
 function commentiSempliciHTML(record) {
@@ -1256,6 +1447,7 @@ function renderDettaglioCompleto(el, r, ccnl, findings) {
   <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
   ${controlliSempliciHTML(findings)}
   <div class="card"><h2>In parole semplici</h2>${commentiSempliciHTML(r)}</div>
+  <div class="card"><h2>Tutte le voci</h2><p class="muted">Ogni riga del cedolino, spiegata senza colonne tecniche inutili. Tocca la “i” solo se vuoi approfondire.</p>${vociTableHTML(r)}</div>
   <div class="card"><h2>Dati utili</h2><div class="kv">
     <div><b>Azienda</b>${esc(r.azienda.nome || '—')}</div>
     <div><b>Contratto</b>${esc(ccnl ? ccnl.nome : (r.ccnl.descrizione || 'Non identificato'))}${r.ccnl.cnel ? ` · CNEL ${esc(r.ccnl.cnel)}` : ''}</div>
@@ -1539,7 +1731,7 @@ function renderImpostazioni() {
   <div class="card"><h2>Aiuta il parser senza inviare il PDF</h2>
     <p>Le correzioni vengono ricordate solo su questo dispositivo. Il pacchetto per contribuire rimuove identità e file, cancella gli estratti testuali e trasforma gli importi mantenendo le relazioni matematiche.</p>
     <div class="btnrow"><button class="ghost" id="btn-export-fixtures">Controlla ed esporta fixture</button></div>
-    <p class="muted small">Alias appresi: <b>${(Store.data.voiceAliases || []).length}</b>. Prima dell’esportazione vedrai un riepilogo privacy; le causali proprietarie vanno comunque ricontrollate.</p>
+    <p class="muted small">Correzioni apprese: <b>${(Store.data.voiceAliases || []).length}</b> · profili locali di formato: <b>${(Store.data.layoutProfiles || []).length}</b>. I profili non contengono PDF, nomi, importi o testo del cedolino.</p>
   </div>
   <div class="card"><h2>Editor CCNL personalizzato</h2>
     <p class="muted small">Copia i valori dal testo del tuo CCNL (archivio CNEL o sindacati) e avrai i controlli su misura.</p>
@@ -1567,7 +1759,7 @@ function renderImpostazioni() {
     downloadJson('bustachiara-backup-' + new Date().toISOString().slice(0, 10) + '.json', Store.data);
   });
   $('#btn-export-fixtures').addEventListener('click', () => {
-    if (!Store.data.records.length && !(Store.data.voiceAliases || []).length) { toast('Non ci sono ancora correzioni o buste da esportare.'); return; }
+    if (!Store.data.records.length && !(Store.data.voiceAliases || []).length && !(Store.data.layoutProfiles || []).length) { toast('Non ci sono ancora correzioni o buste da esportare.'); return; }
     openContributionPreview();
   });
   $('#btn-import-json').addEventListener('click', () => $('#json-input').click());
@@ -1583,13 +1775,18 @@ function renderImpostazioni() {
       for (const alias of d.voiceAliases || []) {
         if (!(Store.data.voiceAliases || []).some(existing => existing.software === alias.software && existing.key === alias.key)) Store.data.voiceAliases.push(alias);
       }
+      for (const profile of d.layoutProfiles || []) {
+        const current = (Store.data.layoutProfiles || []).find(existing => existing.key === profile.key);
+        if (!current) Store.data.layoutProfiles.push(profile);
+        else if ((profile.samples || 0) > (current.samples || 0)) Store.data.layoutProfiles[Store.data.layoutProfiles.indexOf(current)] = profile;
+      }
       Store.save(); renderImporta(); renderImpostazioni();
       toast(`Import completato: ${n} buste aggiunte.`);
     } catch (err) { toast('Backup non valido: ' + err.message); }
   });
   $('#btn-wipe').addEventListener('click', () => {
     if (!confirm('Cancellare TUTTE le buste e i CCNL personalizzati da questo dispositivo? (irreversibile senza backup)')) return;
-    Store.data = { records: [], customCcnl: [], voiceAliases: [] }; Store.save();
+    Store.data = { records: [], customCcnl: [], voiceAliases: [], layoutProfiles: [] }; Store.save();
     renderImporta(); renderImpostazioni(); toast('Dati cancellati.');
   });
   $('#btn-cc-save').addEventListener('click', () => {
@@ -1937,7 +2134,7 @@ async function installaApp() {
     if (g) openInfo(g.nome, `<p>${esc(g.testo)}</p>`);
   });
   document.body.addEventListener('click', (e) => {
-    const row = e.target.closest('tr.voce-row'); if (!row || e.target.closest('.ibtn')) return;
+    const row = e.target.closest('.voce-row'); if (!row || e.target.closest('.ibtn')) return;
     const v = detailVoci[+row.dataset.vocei];
     if (v) { const s = spiegaVoce(v); openInfo(s.nome + (v.descrizione && v.descrizione !== s.nome ? ` (“${v.descrizione}”)` : ''), vociInfoHtml(v)); }
   });
