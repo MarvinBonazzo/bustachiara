@@ -54,7 +54,7 @@ assert.ok(broadComments.length <= 12);
 
 const voiceContext = {
   esc: value => String(value),
-  aliasKey: value => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+  aliasKey: value => String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(),
   fmtEur: value => Number(value).toFixed(2).replace('.', ','),
   spiegaVoce: voice => ({ nome: voice.nome, cat: voice.cat, cosa: voice.cosa, controlla: '' }),
   spiegazioneBreveVoce: (_voice, explanation) => explanation.cosa,
@@ -74,6 +74,20 @@ assert.match(voicesHtml, /Serve a pensione e tutele/);
 assert.match(voicesHtml, /− 50,00 €/);
 assert.doesNotMatch(voicesHtml, /\+ -50,00/);
 assert.doesNotMatch(voicesHtml, /<th|Rif\.|Importo base/i, 'Dettaglio non deve riproporre colonne tecniche');
+assert.doesNotMatch(voicesHtml, /Contributo INPS/, 'il nome originale quasi identico non va ripetuto');
+assert.match(voicesHtml, /voice-ledger-group competenza/);
+assert.match(voicesHtml, /voice-ledger-group trattenuta/);
+assert.match(voicesHtml, /voice-ledger-group dato/);
+assert.match(voicesHtml, /Competenze/);
+assert.match(voicesHtml, /Trattenute/);
+assert.match(voicesHtml, /Dati di calcolo/);
+
+const summarySource = sourceBetween('function renderRiassunto', 'function renderDettaglioCompleto');
+const detailSource = sourceBetween('function renderDettaglioCompleto', 'function bindDettaglioCommon');
+assert.match(summarySource, /<h2>In parole semplici<\/h2>/, 'la lettura semplice deve stare nel Riassunto');
+assert.doesNotMatch(detailSource, /<h2>In parole semplici<\/h2>/, 'il Dettaglio non deve duplicare la lettura semplice');
+assert.match(detailSource, /Dettaglio del cedolino/);
+assert.match(detailSource, /Tutte le voci/);
 
 const profileContext = {
   Store: { data: { layoutProfiles: [] } },

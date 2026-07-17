@@ -230,12 +230,8 @@ function spiegazioneBreveVoce(v, spiegazione = spiegaVoce(v)) {
 function controlloUtileVoce(v, spiegazione = spiegaVoce(v)) {
   const confidence = Number(v.meta && v.meta.confidence);
   const uncertain = Number.isFinite(confidence) && confidence < .7;
-  const computed = v.base != null && v.rifQta != null && (v.competenza != null || v.trattenuta != null);
-  if (computed) {
-    const amount = Math.abs(Number(v.competenza ?? v.trattenuta) || 0);
-    const expected = Math.abs(Number(v.base) * Number(v.rifQta) * (/^%$/.test(v.rifUnita || '') ? .01 : 1));
-    if (expected && Math.abs(expected - amount) > Math.max(.05, amount * .02)) return 'Il calcolo base × quantità non coincide con l’importo: confronta questa riga col documento.';
-  }
+  const calculation = Parser.calcoloVoce(v);
+  if (calculation && !calculation.ok) return 'Il calcolo base × quantità non coincide con l’importo: confronta questa riga col documento.';
   if (uncertain) return spiegazione.controlla || 'La lettura di questa riga non è abbastanza sicura: confronta nome e importo col documento.';
   return '';
 }
@@ -1127,7 +1123,7 @@ function renderVociEdit() {
   const tb = $('#voci-edit tbody');
   tb.innerHTML = draft.record.voci.map((v, i) => `<tr data-i="${i}">
     <td data-label="Codice"><input class="code" data-vk="codice" aria-label="Codice voce" value="${esc(v.codice || '')}"></td>
-    <td data-label="Descrizione"><div class="voice-description-stack"><div class="voice-description-edit"><input class="desc" data-vk="descrizione" aria-label="Descrizione voce" value="${esc(v.descrizione || '')}">${v.meta && v.meta.visual && draft.previewPages[v.meta.visual.page] ? `<button type="button" class="source-btn" data-source-voice="${i}" aria-label="Mostra la voce nel documento">⌖</button>` : ''}</div><div class="voice-check" data-voice-check="${i}" hidden></div></div></td>
+    <td data-label="Descrizione"><div class="voice-description-stack"><div class="voice-description-edit"><input class="desc" data-vk="descrizione" aria-label="Descrizione voce" value="${esc(v.descrizione || '')}">${v.meta && v.meta.visual && draft.previewPages[v.meta.visual.page] ? `<button type="button" class="source-btn" data-source-voice="${i}" aria-label="Mostra la voce nel documento">⌖</button>` : ''}</div>${v.rifTesto ? `<div class="voice-reference">Riferimento: ${esc(v.rifTesto)}</div>` : ''}<div class="voice-check" data-voice-check="${i}" hidden></div></div></td>
     <td data-label="Tipo"><select data-vk="categoriaManuale" aria-label="Conferma il tipo di voce"><option value="">Automatico</option><option value="competenza" ${v.categoriaManuale === 'competenza' ? 'selected' : ''}>Competenza</option><option value="trattenuta" ${v.categoriaManuale === 'trattenuta' ? 'selected' : ''}>Trattenuta</option><option value="dato" ${v.categoriaManuale === 'dato' ? 'selected' : ''}>Dato</option></select></td>
     <td class="num" data-label="Base"><input data-vk="base" aria-label="Base" value="${v.base == null ? '' : esc(fmtEur(v.base, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
     <td class="num" data-label="Quantità"><input data-vk="rifQta" aria-label="Quantità" value="${v.rifQta == null ? '' : esc(fmtEur(v.rifQta, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
@@ -1165,19 +1161,21 @@ function updateVoiceCheckBadges(consistency) {
     const index = +match[1], voice = draft.record.voci[index];
     const item = $(`[data-voice-check="${index}"]`, $('#view-verifica')); if (!item || !voice) continue;
     checked.add(index);
-    const amount = Math.abs(voice.competenza ?? voice.trattenuta ?? 0);
-    const expected = Math.abs((voice.base || 0) * (voice.rifQta || 0) * (/^%$/.test(voice.rifUnita || '') ? .01 : 1));
+    const calculation = Parser.calcoloVoce(voice);
+    if (!calculation) continue;
     item.hidden = false;
     item.classList.add(check.ok ? 'ok' : 'warn');
     item.textContent = check.ok
-      ? `✓ Calcolo coerente: ${fmtEur(expected)} €`
-      : `Da controllare: base × quantità = ${fmtEur(expected)} €, importo ${fmtEur(amount)} € (scarto ${fmtEur(check.delta)} €)`;
+      ? `✓ Calcolo coerente: ${fmtEur(calculation.expected)} €`
+      : `Da controllare: base × quantità = ${fmtEur(calculation.expected)} €, importo ${fmtEur(calculation.amount)} € (scarto ${fmtEur(check.delta)} €)`;
   }
   (draft.record.voci || []).forEach((voice, index) => {
     if (checked.has(index)) return;
     const item = $(`[data-voice-check="${index}"]`, $('#view-verifica')); if (!item) return;
     item.hidden = false; item.classList.add('info');
-    item.textContent = 'Controllo riga non applicabile: base o quantità non sono presenti.';
+    item.textContent = voice.meta && voice.meta.nonMultiplicative
+      ? `Dato di riferimento${voice.rifTesto ? `: ${voice.rifTesto}` : ''}. Non viene usato nel calcolo base × quantità.`
+      : 'Controllo riga non applicabile: base o quantità non sono presenti.';
   });
 }
 function onVerificaInput(e) {
@@ -1284,19 +1282,48 @@ function findingHTML(f) {
 }
 function vociTableHTML(r) {
   if (!r.voci || !r.voci.length) return '<p class="muted">Non sono state trovate righe retributive da spiegare.</p>';
-  return `<div class="voice-simple-list">${r.voci.map((v, i) => {
-    const s = spiegaVoce(v);
-    const amount = v.trattenuta != null ? `${Number(v.trattenuta) < 0 ? '+' : '−'} ${fmtEur(Math.abs(v.trattenuta))} €`
-      : v.competenza != null ? `${Number(v.competenza) < 0 ? '−' : '+'} ${fmtEur(Math.abs(v.competenza))} €`
-        : v.costoAzienda != null ? `${fmtEur(v.costoAzienda)} € (azienda)` : 'Dato informativo';
-    const original = v.descrizione && aliasKey(v.descrizione) !== aliasKey(s.nome) ? v.descrizione : '';
-    const usefulCheck = controlloUtileVoce(v, s);
-    return `<article class="voce-row voice-simple ${s.cat}" data-vocei="${i}">
-      <div class="voice-simple-head"><div><b>${esc(s.nome)}</b>${original ? `<span>${esc(original)}</span>` : ''}</div><strong>${esc(amount)}</strong></div>
-      <p>${esc(spiegazioneBreveVoce(v, s))}</p>
-      ${usefulCheck ? `<p class="voice-simple-check">${esc(usefulCheck)}</p>` : ''}
-      <button class="ibtn" data-vocei="${i}" title="Approfondisci" aria-label="Approfondisci ${esc(s.nome)}">i</button>
-    </article>`;
+  const isRedundantLabel = (original, normalized) => {
+    const a = aliasKey(original), b = aliasKey(normalized);
+    if (!a || !b || a === b || a.includes(b) || b.includes(a)) return true;
+    const stems = value => new Set(aliasKey(value).split(' ').filter(token => token.length > 2).map(token => token.slice(0, 7)));
+    const aTokens = stems(original), bTokens = stems(normalized);
+    const overlap = [...aTokens].filter(token => bTokens.has(token)).length;
+    return overlap / Math.max(1, Math.min(aTokens.size, bTokens.size)) >= .66;
+  };
+  const amountLabel = (v, cat) => {
+    if (v.trattenuta != null) return `${Number(v.trattenuta) < 0 ? '+' : '−'} ${fmtEur(Math.abs(v.trattenuta))} €`;
+    if (v.competenza != null) return `${Number(v.competenza) < 0 ? '−' : '+'} ${fmtEur(Math.abs(v.competenza))} €`;
+    if (v.costoAzienda != null) return `${fmtEur(v.costoAzienda)} € azienda`;
+    return cat === 'dato' ? 'Informazione' : '—';
+  };
+  const entries = r.voci.map((v, i) => ({ v, i, s: spiegaVoce(v) }));
+  const groups = [
+    { cat: 'competenza', title: 'Competenze', note: 'Somme che aumentano il lordo del mese' },
+    { cat: 'trattenuta', title: 'Trattenute', note: 'Somme sottratte prima del netto' },
+    { cat: 'dato', title: 'Dati di calcolo', note: 'Informazioni che spiegano il cedolino senza cambiare direttamente il netto' },
+  ];
+  return `<div class="voice-ledger">${groups.map(group => {
+    const rows = entries.filter(entry => (entry.s.cat || 'dato') === group.cat);
+    if (!rows.length) return '';
+    const total = rows.reduce((sum, entry) => sum + Number(group.cat === 'competenza' ? entry.v.competenza || 0 : group.cat === 'trattenuta' ? entry.v.trattenuta || 0 : 0), 0);
+    const totalLabel = group.cat === 'dato' ? '' : `${group.cat === 'trattenuta' ? (total < 0 ? '+' : '−') : (total < 0 ? '−' : '+')} ${fmtEur(Math.abs(total))} €`;
+    return `<section class="voice-ledger-group ${group.cat}">
+      <header class="voice-ledger-header"><div><h3>${group.title}</h3><p>${group.note} · ${rows.length} ${rows.length === 1 ? 'voce' : 'voci'}</p></div>${totalLabel ? `<strong>${totalLabel}</strong>` : ''}</header>
+      <div class="voice-ledger-rows">${rows.map(({ v, i, s }) => {
+        const original = v.descrizione && !isRedundantLabel(v.descrizione, s.nome) ? v.descrizione : '';
+        const usefulCheck = controlloUtileVoce(v, s);
+        return `<article class="voce-row voice-ledger-row ${group.cat}" data-vocei="${i}">
+          <div class="voice-ledger-copy"><div class="voice-ledger-title"><b>${esc(s.nome)}</b>${v.codice ? `<span class="voice-code">${esc(v.codice)}</span>` : ''}</div>
+            ${original ? `<p class="voice-original">Sul cedolino: ${esc(original)}</p>` : ''}
+            <p class="voice-meaning">${esc(spiegazioneBreveVoce(v, s))}</p>
+            ${v.meta && v.meta.nonMultiplicative && v.rifTesto ? `<p class="voice-reference">Riferimento: ${esc(v.rifTesto)}</p>` : ''}
+            ${usefulCheck ? `<p class="voice-ledger-check">${esc(usefulCheck)}</p>` : ''}
+          </div>
+          <strong class="voice-ledger-amount">${esc(amountLabel(v, group.cat))}</strong>
+          <button class="ibtn" data-vocei="${i}" title="Approfondisci" aria-label="Approfondisci ${esc(s.nome)}">i</button>
+        </article>`;
+      }).join('')}</div>
+    </section>`;
   }).join('')}</div>`;
 }
 
@@ -1437,23 +1464,24 @@ function renderRiassunto(id) {
     ${recSorted().length > 1 ? `<label class="field" style="max-width:220px;margin-bottom:8px">Mese archiviato<select id="sel-riassunto">${recSorted().map(item => `<option value="${esc(item.id)}" ${item.id === r.id ? 'selected' : ''}>${esc(periodoLabel(item.periodo))} · ${esc(tipoCedolinoLabel(item))}</option>`).join('')}</select></label>` : ''}
     <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
     <div class="card"><h2>Dal lordo al netto</h2><p>Nel cedolino risultano <b>${fmtEur(r.totali.competenze)} €</b> di competenze, <b>${fmtEur(r.totali.trattenute)} €</b> di trattenute e <b>${fmtEur(r.totali.netto)} €</b> netti.</p>${flussoStipendioHTML(r)}</div>
-    <div class="card"><h2>Cosa ha cambiato il mese</h2>${commentiSempliciHTML(r)}</div>`;
+    <div class="card"><h2>In parole semplici</h2>${commentiSempliciHTML(r)}</div>`;
   const select = $('#sel-riassunto'); if (select) select.addEventListener('change', () => renderRiassunto(select.value));
 }
 
 function renderDettaglioCompleto(el, r, ccnl, findings) {
   el.innerHTML = `
   ${selettorePeriodo(r)}
-  <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
+  <div class="card detail-overview"><div class="detail-overview-title"><p>${esc(periodoLabel(r.periodo))}</p><h2>Dettaglio del cedolino</h2></div><div class="detail-metrics">
+    <div><span>Competenze</span><b>${fmtEur(r.totali.competenze)} €</b></div>
+    <div><span>Trattenute</span><b>${fmtEur(r.totali.trattenute)} €</b></div>
+    <div class="net"><span>Netto</span><b>${fmtEur(r.totali.netto)} €</b></div>
+  </div></div>
   ${controlliSempliciHTML(findings)}
-  <div class="card"><h2>In parole semplici</h2>${commentiSempliciHTML(r)}</div>
-  <div class="card"><h2>Tutte le voci</h2><p class="muted">Ogni riga del cedolino, spiegata senza colonne tecniche inutili. Tocca la “i” solo se vuoi approfondire.</p>${vociTableHTML(r)}</div>
+  <div class="card voice-ledger-card"><h2>Tutte le voci</h2><p class="muted">Gli importi sono raggruppati per effetto sul cedolino. Ogni riga ha una spiegazione breve; toccala per approfondire.</p>${vociTableHTML(r)}</div>
   <div class="card"><h2>Dati utili</h2><div class="kv">
     <div><b>Azienda</b>${esc(r.azienda.nome || '—')}</div>
     <div><b>Contratto</b>${esc(ccnl ? ccnl.nome : (r.ccnl.descrizione || 'Non identificato'))}${r.ccnl.cnel ? ` · CNEL ${esc(r.ccnl.cnel)}` : ''}</div>
     <div><b>Livello</b>${esc(r.dipendente.livello || '—')}</div>
-    <div><b>Competenze</b>${fmtEur(r.totali.competenze)} €</div>
-    <div><b>Trattenute</b>${fmtEur(r.totali.trattenute)} €</div>
     ${r.ratei && r.ratei.ferie && r.ratei.ferie.saldo != null ? `<div><b>Ferie rimaste</b>${fmtEur(r.ratei.ferie.saldo, 1)} ${/^(?:ORE|ORA|H)$/i.test(r.ratei.ferie.unita || '') ? 'ore' : 'giorni'}</div>` : ''}
   </div></div>
   <div class="btnrow detail-actions"><button class="ghost" id="btn-edit">Modifica dati</button><button class="ghost" id="btn-print">Stampa</button><button class="danger" id="btn-del">Elimina</button></div>`;

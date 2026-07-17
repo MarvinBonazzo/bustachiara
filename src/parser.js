@@ -717,6 +717,64 @@ function inferTableHeads(lines, headerIndex, heads) {
   return heads;
 }
 
+function fiscalReferenceVoice(voce) {
+  const text = plain([voce.descrizione, voce.rifTesto].filter(Boolean).join(' '));
+  return /(?:ADDIZIONAL|IRPEF|IMPOST|CONGUAGL|730|TRATT(?:AMENTO)?\s+INTEG|RATA|ACCONTO|SALDO|DETRAZ|BONUS\s+FISC)/.test(text);
+}
+
+function isReferenceYear(value) {
+  return Number.isInteger(Number(value)) && Number(value) >= 1900 && Number(value) <= 2200;
+}
+
+/* Le colonne dicono dove si trova un valore, non sempre che cosa significa.
+   Nei cedolini fiscali l'anno può stare sotto "Importo base" e il residuo
+   sotto "Riferimento": sono annotazioni della rata, non fattori da moltiplicare. */
+function normalizeVoiceColumnSemantics(voce) {
+  if (!fiscalReferenceVoice(voce)) return voce;
+  const references = [];
+  let referenceOnly = false;
+  const amount = Math.abs(Number(voce.competenza ?? voce.trattenuta));
+  const base = Number(voce.base), quantity = Number(voce.rifQta);
+  const tolerance = Number.isFinite(amount) ? Math.max(0.08, amount * .02) : 0;
+  const directCalculationMatches = Number.isFinite(amount) && Number.isFinite(base) && Number.isFinite(quantity)
+    && (Math.abs(Math.abs(base * quantity) - amount) <= tolerance
+      || (quantity <= 100 && Math.abs(Math.abs(base * quantity * .01) - amount) <= tolerance));
+  if (isReferenceYear(voce.base) && !directCalculationMatches) {
+    references.push(`Anno ${Math.trunc(voce.base)}`);
+    voce.base = null;
+    referenceOnly = true;
+  }
+  const referenceLabel = normalizzaTesto(voce.rifTesto || '');
+  if (voce.rifQta != null && voce.rifUnita !== '%'
+    && /(?:RESIDU|RIFERIMENTO|ANNO|REGIONE|COMUNE|PROVINCIA|SALDO|ACCONTO)/i.test(referenceLabel)) {
+    references.push(`${referenceLabel || 'Riferimento'} ${fmtEur(voce.rifQta)}`);
+    voce.rifQta = null;
+    referenceOnly = true;
+  } else if (referenceLabel) {
+    references.push(referenceLabel);
+  }
+  if (references.length) voce.rifTesto = [...new Set(references)].join(' · ');
+  if (referenceOnly) {
+    voce.meta = Object.assign({}, voce.meta, {
+      nonMultiplicative: true,
+      referenceText: voce.rifTesto,
+    });
+  }
+  return voce;
+}
+
+function calcoloVoce(voce) {
+  if (!voce || (voce.meta && voce.meta.nonMultiplicative)) return null;
+  const amount = voce.competenza ?? voce.trattenuta;
+  if (voce.base == null || voce.rifQta == null || amount == null) return null;
+  const expected = Math.abs(Number(voce.base) * Number(voce.rifQta) * (voce.rifUnita === '%' ? .01 : 1));
+  const actual = Math.abs(Number(amount));
+  if (!Number.isFinite(expected) || !Number.isFinite(actual)) return null;
+  const delta = Math.abs(expected - actual);
+  const tolerance = Math.max(0.08, actual * 0.02);
+  return { expected, amount: actual, delta, tolerance, ok: delta <= tolerance };
+}
+
 function parseTableRow(line, heads) {
   const cells = line.cells.filter(cell => !/^\*+$/.test(cell.str.trim()) && !/^[()]+$/.test(cell.str.trim()));
   let split = splitCodeAndDescription(cells, heads);
@@ -771,23 +829,23 @@ function parseTableRow(line, heads) {
 
   voce.descrizione = [voce.descrizione, ...description].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
   if (referenceText.length) voce.rifTesto = referenceText.join(' ');
+  normalizeVoiceColumnSemantics(voce);
   if (voce.cDitta && voce.competenza != null) {
     voce.costoAzienda = Math.abs(voce.competenza);
     voce.competenza = null;
   }
   if (!voce.descrizione && voce.base == null && voce.rifQta == null && voce.trattenuta == null && voce.competenza == null) return null;
   const amount = voce.competenza ?? voce.trattenuta;
-  const calculated = voce.base != null && voce.rifQta != null
-    ? Math.abs(voce.base * voce.rifQta * (voce.rifUnita === '%' ? .01 : 1)) : null;
-  const rowMatches = amount != null && calculated != null && Math.abs(Math.abs(amount) - calculated) <= Math.max(0.06, Math.abs(amount) * 0.015);
+  const calculation = calcoloVoce(voce);
+  const rowMatches = calculation ? calculation.ok : null;
   voce.descrizioneOriginale = voce.descrizione;
-  voce.meta = {
+  voce.meta = Object.assign({}, voce.meta, {
     source: 'coordinate',
     confidence: Math.min(0.98, 0.48 + (voce.codice ? 0.12 : 0) + (voce.descrizione ? 0.14 : 0)
       + (amount != null ? 0.12 : 0) + (rowMatches ? 0.12 : 0)),
     rowMatches,
     visual: visualEvidence(line),
-  };
+  });
   return voce;
 }
 
@@ -1389,15 +1447,12 @@ function valutaCoerenza(rec) {
   }
   for (let i = 0; i < (rec.voci || []).length; i++) {
     const voice = rec.voci[i];
-    const amount = voice.competenza ?? voice.trattenuta;
-    if (voice.base == null || voice.rifQta == null || amount == null) continue;
-    const expected = Math.abs(voice.base * voice.rifQta * (/^%$/.test(voice.rifUnita || '') ? .01 : 1));
-    const delta = Math.abs(expected - Math.abs(amount));
-    const tolerance = Math.max(0.08, Math.abs(amount) * 0.02);
-    checks.push({ id: 'voce.' + i, ok: delta <= tolerance, delta, weight: 1 });
+    const calculation = calcoloVoce(voice);
+    if (!calculation) continue;
+    checks.push({ id: 'voce.' + i, ok: calculation.ok, delta: calculation.delta, weight: 1 });
     voice.meta = voice.meta || {};
-    voice.meta.rowMatches = delta <= tolerance;
-    if (voice.meta.confidence == null) voice.meta.confidence = delta <= tolerance ? 0.82 : 0.58;
+    voice.meta.rowMatches = calculation.ok;
+    if (voice.meta.confidence == null) voice.meta.confidence = calculation.ok ? 0.82 : 0.58;
   }
   for (const key of ['ferie', 'permessi', 'exFestivita']) {
     const rateo = rec.ratei && rec.ratei[key];
@@ -1807,4 +1862,4 @@ function findOfficialCcnlByText(value) {
 }
 
 // eslint-disable-next-line no-unused-vars
-const Parser = { parsePdfPages, parseFreeText, trovaCcnl, suggerisciCcnl, cnelContractByCode, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, valutaCoerenza, fieldConfidence, normalizzaTesto, ripulisciRecord, quadraturaTotali, rilevaTipoCedolino };
+const Parser = { parsePdfPages, parseFreeText, trovaCcnl, suggerisciCcnl, cnelContractByCode, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, valutaCoerenza, calcoloVoce, fieldConfidence, normalizzaTesto, ripulisciRecord, quadraturaTotali, rilevaTipoCedolino };

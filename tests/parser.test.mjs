@@ -139,6 +139,35 @@ assert.ok(jet.record.voci.find(v => v.codice === '0').meta.visual.bbox.w > 0);
 assert.equal(jet.record.voci.every(v => v.meta && v.meta.visual && v.meta.visual.bbox), true, 'ogni voce estratta a coordinate deve rimandare alla sua sorgente');
 assert.ok(jet.record.meta.reconciliation.score >= 70, JSON.stringify({ reconciliation: jet.record.meta.reconciliation, voices: jet.record.voci.map(v => ({ d:v.descrizione,b:v.base,q:v.rifQta,u:v.rifUnita,t:v.trattenuta,c:v.competenza })) }));
 
+// Nei prospetti fiscali anno e residuo occupano colonne numeriche, ma non sono
+// base e quantità retributive. La geometria riproduce le due righe del PDF
+// Paghe Open reale usato come regressione, senza conservarne dati personali.
+const fiscalReferences = Parser.parsePdfPages([page([
+  [540, [[38, 'VOCE'], [68, 'DESCRIZIONE'], [210, 'IMPORTO BASE'], [322, 'RIFERIMENTO'], [473, 'TRATTENUTE'], [535, 'COMPETENZE']]],
+  [526, [[38, 'F09110'], [68, 'Addizionale'], [112, 'regionale'], [210, '2025'], [233, 'TOSCANA'], [322, 'Residuo'], [402, '117,91'], [473, '23,58']]],
+  [512, [[38, 'F09150'], [68, 'Rata'], [88, 'tratt.'], [108, 'integ.'], [131, 'L.21/2020'], [210, '2025'], [322, 'Residuo'], [407, '10,68'], [473, '10,69']]],
+  [505, [[38, 'F09000'], [68, 'IRPEF'], [210, '2.025,00'], [360, '%'], [407, '23,00'], [473, '465,75']]],
+  [498, [[28, 'CONTRIBUTI']]],
+])]);
+for (const [code, withholding, residual] of [['F09110', 23.58, '117,91'], ['F09150', 10.69, '10,68']]) {
+  const voice = fiscalReferences.record.voci.find(item => item.codice === code);
+  assert.ok(voice, `${code}: voce fiscale non estratta`);
+  assert.equal(voice.base, null, `${code}: l'anno non deve diventare importo base`);
+  assert.equal(voice.rifQta, null, `${code}: il residuo non deve diventare quantità`);
+  approx(voice.trattenuta, withholding);
+  assert.equal(voice.meta.nonMultiplicative, true);
+  assert.match(voice.rifTesto, /Anno 2025/);
+  assert.match(voice.rifTesto, new RegExp(residual.replace(',', '[,.]')));
+  assert.equal(Parser.calcoloVoce(voice), null);
+}
+const fiscalConsistency = Parser.valutaCoerenza(fiscalReferences.record);
+assert.equal(fiscalConsistency.checks.some(check => /^voce\./.test(check.id) && !check.ok), false,
+  'le annotazioni fiscali non devono produrre falsi errori base × quantità');
+const irpefOnYearLikeBase = fiscalReferences.record.voci.find(item => item.codice === 'F09000');
+assert.equal(irpefOnYearLikeBase.base, 2025, 'un imponibile uguale a un anno va conservato quando il calcolo percentuale quadra');
+assert.equal(irpefOnYearLikeBase.rifQta, 23);
+assert.equal(Parser.calcoloVoce(irpefOnYearLikeBase).ok, true);
+
 const fipe = Parser.trovaCcnl(jet.record, Data.CCNL_DB);
 assert.equal(fipe.id, 'pubblici-esercizi-fipe');
 assert.equal(Data.classificaVoce(jet.record.voci.find(v => v.codice === '0')).nome, 'Retribuzione ordinaria');

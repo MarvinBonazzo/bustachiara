@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v11-consenso-locale';
+const CACHE = 'bustachiara-v12-colonne-semantiche';
 const ASSETS = [
   './',
   './index.html',
