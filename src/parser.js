@@ -970,15 +970,20 @@ function extractTotals(rec, allLines) {
     const lines = allLines[page];
     for (let i = 0; i < lines.length; i++) {
       for (const def of definitions) {
-        const matching = lines[i].cells.filter(cell => def.re.test(normalizzaTesto(cell.str)));
-        for (const cell of matching) {
-          const value = numberForLabel(lines, i, cell, { maxRows: 4, belowDx: 120, sameLineDx: 240 });
+        // Molti PDF spezzano "TOTALE COMPETENZE" in due celle e stampano il
+        // valore una o due righe più in basso, mentre a sinistra inizia già il
+        // riquadro progressivi. Cerchiamo quindi l'intera etichetta come span
+        // contiguo e usiamo la sua colonna, non soltanto una singola cella.
+        const labels = matchingLabelSpans(lines[i], def.re);
+        for (const label of labels) {
+          const labelCell = { x: label.bbox.x, w: label.bbox.w };
+          const value = numberForLabel(lines, i, labelCell, { maxRows: 4, belowDx: 120, sameLineDx: 240 });
           if (value != null) addCandidate(rec, 'totali.' + def.key, value, {
             confidence: rec.meta.fonte === 'ocr' ? 0.66 : 0.9,
             source: rec.meta.fonte,
             method: 'etichetta-coordinate',
-            label: normalizzaTesto(cell.str), page,
-            bbox: lineBBox(lines[i]), snippet: normalizzaTesto(lines[i].text).slice(0, 180),
+            label: label.text, page,
+            bbox: label.bbox, snippet: normalizzaTesto(lines[i].text).slice(0, 180),
           });
         }
         if (def.re.test(normalizzaTesto(lines[i].text))) {
@@ -1601,12 +1606,18 @@ function parseFreeText(text) {
     const headingText = line.replace(/0/g, 'O');
     const looksLikePeriodHeading = /\b(?:GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE|PERIODO|CED\s*O?LINO|RATA\s+DI\s+RIFERIMENTO)\b/i.test(headingText);
     if (hasYear && looksLikePeriodHeading && !/[,.]\d{2}\b/.test(line)) continue;
-    const matches = line.match(NUM_ANY_RE) || [];
+    // Titoli come "CEDOLINO PART TIME 60%" non sono una riga economica.
+    if (/^(?:CED\s*O?LINO|BUSTA\s+PAGA|PROSPETTO\s+PAGA|LIBRO\s+UNICO)\b/i.test(headingText) && !/[,.]\d{2}\b/.test(line)) continue;
+    // 730 è spesso il nome dell'assistenza fiscale, non un importo. Lo
+    // proteggiamo durante il riconoscimento numerico e lo ripristiniamo dopo.
+    const protectedLine = line.replace(/\b730\b(?=\s|$)/g, 'MODSETTETRENTA');
+    const matches = protectedLine.match(NUM_ANY_RE) || [];
     const numbers = matches.map(itNum).filter(value => value != null);
     if (!numbers.length) continue;
-    let description = line.replace(NUM_ANY_RE, ' ').replace(/[|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    let description = protectedLine.replace(NUM_ANY_RE, ' ').replace(/MODSETTETRENTA/g, '730').replace(/[|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
     if (!/[A-Za-zÀ-ù]{3}/.test(description)) continue;
-    if (/TOTALE|\bNETTO\b|RETRIBUZIONE\s+NETTA|IMPORTO\s+NETTO|PAGA\s+BASE|CONTINGENZA|SUPERMINIMO|ELEMENTI\s+RETRIBUTIVI|VOCI\s+VARIABILI|RIFERIMENTO|CODICE\s+(?:FISCALE|CNEL)|COGNOME\s+E\s+NOME/i.test(description)) continue;
+    if (/TOTALE|\bNETTO\b|RETRIBUZIONE\s+NETTA|IMPORTO\s+NETTO|ELEMENTI\s+RETRIBUTIVI|VOCI\s+VARIABILI|RIFERIMENTO|CODICE\s+(?:FISCALE|CNEL)|COGNOME\s+E\s+NOME/i.test(description)
+      || /^(?:PAGA\s+BASE|CONTINGENZA|SUPERMINIMO)$/i.test(description)) continue;
 
     let code = '';
     const codeMatch = description.replace(/^(?:\*\s*)+/, '').match(/^([A-Z0-9][A-Z0-9./_-]{0,11})\s+(.+)$/i);
@@ -1616,7 +1627,10 @@ function parseFreeText(text) {
     }
     description = description.replace(/^[^A-Za-zÀ-ù]{1,4}/, '').replace(/\s*(?:ORE?|GG\.?|GIORNI?|RATEI?|%)\s*$/i, '').trim();
     if (description.length < 3) continue;
-    const isCredit = /\b(?:A\s+CREDITO|CREDITO|RIMBORSO|RESTITUZIONE)\b/i.test(description);
+    const explicitCredit = /\b(?:A\s+CREDITO|CREDITO|RIMBORSO|RESTITUZIONE)\b/i.test(description);
+    const wageReplacement = /\b(?:INTEGRAZIONE\s+SALARIALE|ASSEGNO\s+(?:ORDINARIO|FIS)|INDENNIT[AÀ]\s+(?:DI\s+)?(?:MALATTIA|MATERNIT[AÀ]|PATERNIT[AÀ]|INFORTUNIO))\b/i.test(description);
+    const explicitDeduction = /\b(?:CONTRIBUTO|TRATTENUTA|RITENUTA)\b/i.test(description);
+    const isCredit = explicitCredit || (wageReplacement && !explicitDeduction);
     const isDeduction = !isCredit && /IRPEF|CONTRIBUT|TRATTENUT|RITENUT|ADDIZIONALE|SINDAC|CESSION|PIGNOR|IVS|FIS\b|INPS/i.test(description);
     const voice = { codice: code, descrizione: description.slice(0, 100), base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null };
     if (numbers.length === 1) {

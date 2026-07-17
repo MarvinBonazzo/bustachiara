@@ -36,6 +36,19 @@ assert.equal(Parser.itNum('(45,20)'), -45.2);
 assert.equal(Parser.itNum('9.84122'), 9.84122);
 assert.equal(Parser.itNum('1.234'), 1234);
 
+const fisExtended = Parser.parseFreeText(`
+CEDOLINO PAGA 10/2026
+Retribuzione ordinaria 1.500,00
+Contributo FIS Fondo Integrazione Salariale 12,00
+TOTALE COMPETENZE 1.500,00
+TOTALE TRATTENUTE 300,00
+NETTO A PAGARE 1.200,00
+`);
+const fisExtendedVoice = fisExtended.record.voci.find(voice => /Contributo FIS Fondo/i.test(voice.descrizione));
+assert.ok(fisExtendedVoice, 'contributo FIS esteso non estratto');
+approx(fisExtendedVoice.trattenuta, 12);
+assert.equal(fisExtendedVoice.competenza, null);
+
 const jet = Parser.parsePdfPages([page([
   [800, [[25, 'AZIENDA DIMOSTRATIVA S.R.L.'], [170, 'CODICE FISCALE / P.IVA'], [260, 'MESE DI RETRIBUZIONE']]],
   [786, [[170, '06876040483'], [260, 'GIUGNO 2026']]],
@@ -99,6 +112,8 @@ approx(jet.record.orario.giorniLavorati, 23);
 approx(jet.record.orario.pagaOraria, 9.84122, 0.00001);
 approx(jet.record.derivati.retribuzione.oraria, 9.84122, 0.00001);
 approx(jet.record.totali.netto, 1769);
+approx(jet.record.totali.competenze, 2145.48);
+approx(jet.record.totali.trattenute, 376.45);
 approx(jet.record.ratei.ferie.godutoAp, 31.7);
 approx(jet.record.tfr.fondo3112, 1436.47);
 approx(jet.record.derivati.ulterioreDetrazione, 82.19);

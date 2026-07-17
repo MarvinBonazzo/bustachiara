@@ -321,5 +321,117 @@
       { "match": "Maggiorazlone lavor notturn", "side": "competenza", "amount": 40, "class": "Lavoro notturno" }
     ],
     "quadrature": true
+  },
+  {
+    "id": "sportivo-cococo",
+    "family": "Lavoro sportivo co.co.co.",
+    "type": "text",
+    "text": "CEDOLINO COMPENSO LAVORO SPORTIVO CO.CO.CO.\nPERIODO OTTOBRE 2026\nCompenso attivita sportiva 1.600,00\nIndennita trasferta documentata 120,00\nContributo gestione separata INPS 176,00\nRitenuta IRPEF 244,00\nTOTALE COMPETENZE 1.720,00\nTOTALE TRATTENUTE 420,00\nNETTO A PAGARE 1.300,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 1720, "totali.trattenute": 420, "totali.netto": 1300 },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Compenso attivita sportiva", "side": "competenza", "amount": 1600 },
+      { "match": "trasferta documentata", "side": "competenza", "amount": 120 },
+      { "match": "gestione separata INPS", "side": "trattenuta", "amount": 176 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "spettacolo-enpals",
+    "family": "Spettacolo ed ex ENPALS",
+    "type": "text",
+    "text": "LIBRO UNICO DEL LAVORO - LAVORATORE DELLO SPETTACOLO\nPERIODO 10/2026\nCompenso giornate spettacolo 140,00 12,00 1.680,00\nIndennita prove 120,00\nContributo IVS ex ENPALS 165,42\nRitenuta IRPEF 334,58\nTOTALE COMPETENZE 1.800,00\nTOTALE TRATTENUTE 500,00\nNETTO A PAGARE 1.300,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 1800, "totali.trattenute": 500, "totali.netto": 1300 },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Compenso giornate spettacolo", "side": "competenza", "amount": 1680 },
+      { "match": "Indennita prove", "side": "competenza", "amount": 120 },
+      { "match": "ex ENPALS", "side": "trattenuta", "amount": 165.42 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "marittimi-imbarco",
+    "family": "Lavoratori marittimi",
+    "type": "text",
+    "text": "CEDOLINO PERSONALE MARITTIMO IMBARCATO\nPERIODO OTTOBRE 2026\nPaga base marittimi 1.650,00\nIndennita navigazione 350,00\nIndennita vitto 100,00\nContributo previdenziale marittimi 192,99\nTOTALE COMPETENZE 2.100,00\nTOTALE TRATTENUTE 600,00\nNETTO A PAGARE 1.500,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 2100, "totali.trattenute": 600, "totali.netto": 1500 },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Paga base marittimi", "side": "competenza", "amount": 1650 },
+      { "match": "Indennita navigazione", "side": "competenza", "amount": 350 },
+      { "match": "Contributo previdenziale", "side": "trattenuta", "amount": 192.99 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "sanita-turni-reperibilita",
+    "family": "Sanita, turni e reperibilita",
+    "type": "text",
+    "text": "CEDOLINO PERSONALE SANITARIO\nPERIODO OTTOBRE 2026\nStipendio tabellare 1.900,00\nIndennita professionale specifica 130,00\nIndennita turno notturno 96,00\nPronta disponibilita reperibilita 144,00\nContributi previdenziali 220,00\nTOTALE COMPETENZE 2.270,00\nTOTALE TRATTENUTE 670,00\nNETTO A PAGARE 1.600,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 2270, "totali.trattenute": 670, "totali.netto": 1600 },
+    "expectedVoiceCount": 5,
+    "voices": [
+      { "match": "Stipendio tabellare", "side": "competenza", "amount": 1900 },
+      { "match": "turno notturno", "side": "competenza", "amount": 96 },
+      { "match": "reperibilita", "side": "competenza", "amount": 144 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "cig-fis-riduzione",
+    "family": "Cassa integrazione e FIS",
+    "type": "text",
+    "text": "LIBRO UNICO DEL LAVORO - RIDUZIONE ORARIO\nPERIODO 10/2026\nRetribuzione ordinaria 1.200,00\nIntegrazione salariale FIS 420,00\nAssegno nucleo familiare 80,00\nContributo INPS 156,23\nTOTALE COMPETENZE 1.700,00\nTOTALE TRATTENUTE 400,00\nNETTO IN BUSTA 1.300,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 1700, "totali.trattenute": 400, "totali.netto": 1300 },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Retribuzione ordinaria", "side": "competenza", "amount": 1200, "class": "Retribuzione ordinaria" },
+      { "match": "Integrazione salariale FIS", "side": "competenza", "amount": 420 },
+      { "match": "Assegno nucleo familiare", "side": "competenza", "amount": 80 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "assenze-tutelate",
+    "family": "Malattia, maternita e infortunio",
+    "type": "text",
+    "text": "CEDOLINO PAGA OTTOBRE 2026\nRetribuzione ordinaria 1.100,00\nIndennita malattia INPS 300,00\nIntegrazione maternita azienda 200,00\nIndennita temporanea infortunio INAIL 150,00\nContributo INPS 160,81\nTOTALE COMPETENZE 1.750,00\nTOTALE TRATTENUTE 450,00\nNETTO A PAGARE 1.300,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 1750, "totali.trattenute": 450, "totali.netto": 1300 },
+    "expectedVoiceCount": 5,
+    "voices": [
+      { "match": "Indennita malattia INPS", "side": "competenza", "amount": 300 },
+      { "match": "Integrazione maternita", "side": "competenza", "amount": 200 },
+      { "match": "infortunio INAIL", "side": "competenza", "amount": 150 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "credito-730-fondo-pensione",
+    "family": "Assistenza fiscale e previdenza complementare",
+    "type": "text",
+    "text": "CEDOLINO CON ASSISTENZA FISCALE\nOTTOBRE 2026\nRetribuzione ordinaria 1.800,00\nRimborso credito 730 250,00\nContributo fondo pensione lavoratore 45,00\nContributo INPS 165,42\nTOTALE COMPETENZE 2.050,00\nTOTALE TRATTENUTE 450,00\nNETTO A PAGARE 1.600,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 2050, "totali.trattenute": 450, "totali.netto": 1600 },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Retribuzione ordinaria", "side": "competenza", "amount": 1800, "class": "Retribuzione ordinaria" },
+      { "match": "Rimborso credito 730", "side": "competenza", "amount": 250 },
+      { "match": "fondo pensione lavorat", "side": "trattenuta", "amount": 45 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "part-time-supplementare-buoni",
+    "family": "Part-time, supplementare e welfare",
+    "type": "text",
+    "text": "CEDOLINO DIPENDENTE PART TIME 60%\nPERIODO 10/2026\nRetribuzione ordinaria part time 1.050,00\nLavoro supplementare 25 per cento 12,00 10,00 120,00\nBuoni pasto elettronici 88,00\nPremio welfare non monetario 100,00\nContributo INPS 115,54\nTOTALE COMPETENZE 1.358,00\nTOTALE TRATTENUTE 358,00\nNETTO A PAGARE 1.000,00",
+    "expected": { "periodo.mese": 10, "periodo.anno": 2026, "totali.competenze": 1358, "totali.trattenute": 358, "totali.netto": 1000 },
+    "expectedVoiceCount": 5,
+    "voices": [
+      { "match": "Retribuzione ordinaria part time", "side": "competenza", "amount": 1050, "class": "Retribuzione ordinaria" },
+      { "match": "Lavoro supplementare", "side": "competenza", "amount": 120 },
+      { "match": "Buoni pasto", "side": "competenza", "amount": 88 }
+    ],
+    "quadrature": true
   }
 ]

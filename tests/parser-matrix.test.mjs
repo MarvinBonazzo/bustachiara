@@ -106,8 +106,8 @@ for (const fixture of fixtures) {
   results.push({ id: fixture.id, family: fixture.family, voices: parsed.record.voci.length });
 }
 
-assert.ok(fixtures.length >= 14, `matrice troppo piccola: ${fixtures.length}`);
-assert.ok(new Set(fixtures.map(fixture => fixture.family)).size >= 14, 'ogni fixture deve coprire una famiglia distinta');
+assert.ok(fixtures.length >= 22, `matrice troppo piccola: ${fixtures.length}`);
+assert.ok(new Set(fixtures.map(fixture => fixture.family)).size >= 22, 'ogni fixture deve coprire una famiglia distinta');
 assert.ok(fixtures.some(fixture => fixture.type === 'pages'), 'manca un PDF testuale simulato a coordinate');
 assert.ok(fixtures.some(fixture => fixture.id.includes('ocr-rumoroso')), 'manca un caso OCR rumoroso');
 assert.equal(failures.length, 0, `matrice parser fallita (${failures.length}/${fixtures.length}):\n- ${failures.join('\n- ')}`);
