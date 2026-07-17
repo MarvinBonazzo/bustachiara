@@ -2,10 +2,11 @@
 
 **La busta paga italiana, spiegata — 100% privata, 100% offline e installabile su ogni dispositivo.**
 
-BustaChiara legge le tue buste paga (PDF, scansioni o foto), spiega ogni voce, rifà i conti
-(IRPEF, INPS, TFR, ferie, permessi, minimi contrattuali), segnala ciò che non torna e tiene
-una **cronologia** mese per mese. Tutto avviene **dentro il tuo browser**: nessun dato viene
-mai inviato da nessuna parte — non a un server, non a un'AI, non a nessuno.
+BustaChiara legge le tue buste paga (PDF, scansioni o foto), ricostruisce i dati principali,
+rifà i conti (IRPEF, INPS, TFR, ferie, permessi e minimi contrattuali), segnala ciò che non
+torna e crea un **riassunto semplice** del mese. Tutto avviene **dentro il tuo browser**:
+il documento, il testo estratto e i dati confermati non vengono inviati a server, servizi
+cloud o AI remote.
 
 ---
 
@@ -69,33 +70,22 @@ Le stesse istruzioni sono sempre disponibili dentro l’app tramite il pulsante 
 > sincronizzano da soli tra dispositivi. Usa **Backup → Esporta tutto** per fare backup o
 > passare i dati a un altro dispositivo.
 
-L’analisi è unica e completa: voci spiegate, elementi fissi, TFR, ferie/permessi,
-progressivi, confronto col CCNL e controlli automatici con formule.
-
-Ovunque trovi una **"i"**: toccala e si apre la spiegazione in parole semplici di quel
-termine o di quella voce (competenza, trattenuta, imponibile, TFR, rateo…). Il dizionario
-completo è nella scheda **Extra**.
-
-Il pulsante **Riassunto**, accanto a Dettaglio, racconta il mese in poche righe senza tecnicismi:
-quanto hai guadagnato lordo, cosa ti è stato tolto e per cosa (pensione, tasse, piccole
-quote), il netto arrivato, le ferie e i permessi rimasti, il TFR messo da parte, e se i
-controlli hanno trovato qualcosa che non torna.
+L’analisi conserva elementi fissi, voci, TFR, ferie/permessi, progressivi, CCNL e controlli
+automatici, ma l’interfaccia mostra prima ciò che serve davvero. **Riassunto** racconta il
+mese in poche righe: lordo, trattenute, netto, ferie, TFR e differenze dovute a domeniche,
+festivi, notturni o straordinari quando sono identificabili in modo affidabile. Le stime
+economiche sono sempre indicate come importi lordi.
 
 ### Flusso tipico
-1. **Home** → trascina il PDF della busta (anche **protetto da password**: viene chiesta
-   al momento e non lasciata da nessuna parte), oppure **uno screenshot o una foto**: la
-   lettura ottica locale ricostruisce la tabella delle voci usando le coordinate delle
-   parole, quindi anche da un'immagine l'estrazione è quasi completa.
+1. **Home** → trascina o scegli un PDF, uno screenshot o una foto dal riquadro centrale.
+   Un PDF **protetto da password** viene sbloccato soltanto in memoria; la password non
+   viene conservata.
 2. **Verifica** → l'app mostra tutto ciò che ha estratto; controlla e correggi. *I controlli
    valgono quanto i dati che confermi.*
-3. **Dettaglio** → se c'è qualcosa che non torna appare SUBITO in cima ("Da controllare in
-   questa busta", con cosa verificare e come muoversi); poi il riepilogo del mese, le voci
-   spiegate una per una, gli elementi fissi, il TFR, ferie/permessi, il contratto e in fondo
-   la tendina "Informazioni generali" con tutti i controlli. Ogni sezione è richiudibile
-   (aperte di default).
-4. **Home** contiene anche l'archivio: andamento del netto, TFR accantonato, confronto
-   mese su mese e la spiegazione di dove sono salvati i dati (browser del dispositivo,
-   backup, incognito…).
+3. **Riassunto** → mostra il flusso economico riconciliato al 100%, commenti concreti e
+   soltanto gli avvisi che richiedono attenzione.
+4. **Dettaglio** → mostra netto, dati utili, controlli urgenti e azioni sul record, senza
+   una lunga spiegazione ripetitiva per ogni singola riga.
 5. **Extra** → curiosità, dizionario, CCNL e fonti ufficiali. Le schede oggettive (TFR vs
    fondo pensione, quanto vale un'ora del tuo
    lavoro, quanti giorni di fila si può lavorare, quanto costi all'azienda, perché la 13ª
@@ -149,12 +139,16 @@ anche controllare ed esportare un fixture per contribuire a nuovi test: identit�
 estratti della pagina vengono rimossi e gli importi trasformati mantenendo la quadratura.
 Le causali proprietarie restano comunque da rileggere prima di pubblicarlo.
 
-I test di regressione usano esclusivamente dati inventati e riproducono famiglie strutturali
-diverse: LUL privato, Jet HR, Zucchetti, NoiPA, lavoro domestico, edilizia/Cassa Edile,
-tabella senza codici e OCR generico. Si eseguono con:
+I test di regressione usano esclusivamente dati inventati. Oltre ai fixture storici, la
+matrice settoriale copre 14 famiglie: LUL privato/Zucchetti, NoiPA, Cassa Edile,
+agricoltura, lavoro domestico, cooperativa, somministrazione, dirigenti, turni e
+maggiorazioni, tredicesima, quattordicesima, conguaglio fiscale, cessazione e OCR rumoroso.
+Nel complesso la matrice verifica 46 voci economiche. Si eseguono con:
 
 ```bash
 node tests/parser.test.mjs
+node tests/ai-ocr.test.mjs
+node tests/ui-pwa.test.mjs
 ```
 
 Nessun parser, locale o online, può promettere precisione assoluta su ogni cedolino esistente:
@@ -166,10 +160,12 @@ Metodo di ricerca, formati pubblici consultati e strategia per ampliare i test s
 in [`docs/parser-research.md`](docs/parser-research.md). I PDF di ricerca e i cedolini reali
 non sono inclusi nel repository.
 
-Interfaccia: chiara e rassicurante, costruita attorno all’icona del **foglio illuminato**. Il pulsante **Riassunto** racconta il mese
-in parole semplicissime e include la barra "Dove vanno i tuoi soldi" (verde = netto,
-arancione = contributi INPS, rosso = tasse, grigio = piccole quote). Schede in ordine
-Home · Dettaglio · Riassunto · Diritti minimi · Extra · Backup. Nell’intestazione restano
+Interfaccia: chiara e rassicurante, costruita attorno all’icona del **foglio illuminato**.
+La Home contiene soltanto il riquadro di importazione e tre promesse verificabili:
+"Funziona offline", "Privacy 100%" e "Non invii nessun dato a nessuno". **Riassunto** usa
+un flusso riconciliato (netto, contributi, tasse e altre trattenute) le cui parti sommano
+sempre al 100%. Schede in ordine Home · Riassunto · Dettaglio · Diritti minimi · Extra ·
+Backup. Nell’intestazione restano
 soltanto Il progetto, Installa e 100% privacy. Quando pubblichi un aggiornamento della PWA, alza la
 versione della cache in `pwa/sw.js` (`bustachiara-v2`, `-v3`…) così i dispositivi scaricano
 la novità.
@@ -187,8 +183,11 @@ personali — l'unica "busta" inclusa è l'esempio con dati inventati (Mario Ros
   soltanto le risorse statiche e gli aggiornamenti provenienti dalla stessa installazione
   GitHub Pages/localhost; non autorizza API, analytics o server di terzi. Puoi verificarlo
   negli strumenti sviluppatore: durante l'analisi non parte alcuna richiesta esterna.
-- I motori di lettura (pdf.js) e OCR (tesseract.js + dizionario italiano) sono **inglobati
-  nel file** (per questo pesa ~9 MB): non viene scaricato nulla.
+- pdf.js, Tesseract e il dizionario italiano sono inglobati nel file principale. Se due
+  letture Tesseract restano incerte, l'app può richiedere dallo **stesso dominio** un secondo
+  OCR locale PP-OCRv5/ONNX. I suoi file vengono scaricati solo in quel caso, conservati nella
+  cache PWA e poi eseguiti nel browser; il documento e il testo riconosciuto non fanno parte
+  della richiesta. Non vengono contattati CDN, API o servizi Google.
 - La cronologia sta nel **localStorage del browser**. Il PDF originale **non** viene salvato:
   solo i dati estratti che confermi.
 - Cancellando i dati di navigazione cancelli anche l'archivio → fai export periodici.
@@ -360,7 +359,7 @@ modificata nel repository.
 |---|---|---|
 | Interfaccia | HTML5, CSS e JavaScript vanilla | schermate, verifica manuale, archivio e backup |
 | PDF nativi | pdf.js 3.11.174 | testo, dimensioni, pagina e coordinate di ogni elemento |
-| Scansioni e foto | tesseract.js 5.1.1, WebAssembly e modello italiano `ita` | OCR interamente nel browser |
+| Scansioni e foto | tesseract.js 5.1.1 + PP-OCRv5/ONNX Runtime Web come seconda lettura opzionale | OCR interamente nel browser |
 | Parser | regole JavaScript, geometria, dizionari e riconciliazione matematica | trasforma parole e coordinate in un cedolino strutturato |
 | Classificazione | codici noti, espressioni regolari, sinonimi, trigrammi e distanza testuale | riconosce abbreviazioni, refusi OCR e causali simili |
 | CCNL | archivio curato + indice Open Data CNEL generato | identifica il contratto e abilita i controlli disponibili |
@@ -382,6 +381,8 @@ Requisito consigliato: **Node.js 22**, la stessa versione usata dalla CI.
 git clone https://github.com/ShivenBonazzo/bustachiara.git
 cd bustachiara
 node tests/parser.test.mjs
+node tests/ai-ocr.test.mjs
+node tests/ui-pwa.test.mjs
 node build.mjs
 python3 -m http.server 8000 --directory pwa
 ```
@@ -403,6 +404,7 @@ BustaChiara/
 ├── pwa/               ← versione installabile, pronta per GitHub Pages
 │   ├── index.html     (generato automaticamente durante il deploy, non versionato)
 │   ├── manifest.webmanifest, sw.js (offline totale dopo la prima visita)
+│   ├── ai/            (PP-OCRv5 + ONNX Runtime, caricati solo quando servono)
 │   └── icons/         (foglio illuminato + tagli PWA generati da make-icons.py)
 ├── build.mjs          ← assembla pwa/index.html dai sorgenti
 ├── make-icons.py      ← rigenera le icone PWA dalla sorgente (richiede Pillow)
@@ -415,10 +417,12 @@ BustaChiara/
 │   ├── cnel-index.js  ← 1.143 codici ufficiali, file generato automaticamente
 │   ├── parser-sectors.js ← moduli terminologici e rilevamento dei settori
 │   ├── parser.js      ← parser multi-layout, candidati, provenienza e controlli di coerenza
+│   ├── ai-ocr.js      ← secondo OCR locale, attivazione e fusione prudente dei risultati
 │   ├── checks.js      ← motore dei controlli
 │   └── ui.js          ← interfaccia, OCR adattivo, apprendimento locale, cronologia, export
 ├── tests/
 │   ├── parser.test.mjs
+│   ├── parser-matrix.test.mjs + ai-ocr.test.mjs + ui-pwa.test.mjs
 │   └── fixtures/      ← soli layout e dati inventati, mai cedolini reali
 └── vendor/            ← librerie inglobate alla build
     ├── pdf.min.js + pdf.worker.min.js        (pdf.js 3.11.174, Apache-2.0)
@@ -433,9 +437,13 @@ flowchart TD
     A["PDF, scansione o foto"] --> B{"PDF con testo sufficiente?"}
     B -->|Sì| C["pdf.js: testo + pagina + coordinate"]
     B -->|No o solo in alcune zone| D["Canvas + preparazione immagine"]
-    D --> E["Tesseract OCR locale"]
+    D --> E["Due letture Tesseract locali"]
+    E --> Q{"Risultato ancora debole?"}
+    Q -->|Sì| R["PP-OCRv5 locale: seconda opinione"]
+    Q -->|No| F
+    R --> S["Fusione prudente: aggiunge dati mancanti, non forza conflitti"]
+    S --> F
     C --> F["Item normalizzati x, y, larghezza, altezza, testo"]
-    E --> F
     F --> G["Ricostruzione di righe, colonne e sezioni"]
     G --> H["Estrazione di campi, voci e candidati alternativi"]
     H --> I["Riconciliazione matematica e punteggi di affidabilità"]
@@ -452,21 +460,26 @@ In dettaglio:
 2. Per un PDF nativo pdf.js produce elementi nel formato `{ str, x, y, w, h }`. Se una
    pagina contiene troppo poco testo, l'OCR integra soltanto quella pagina; immagini e
    scansioni passano invece interamente da Tesseract.
-3. `buildLines()` in `src/parser.js` raggruppa gli elementi per coordinata verticale e li
+3. Se entrambe le letture Tesseract sono ancora deboli, `src/ai-ocr.js` carica PP-OCRv5
+   dallo stesso dominio. La seconda lettura può aggiungere parole in zone mancanti; quando
+   un testo sovrapposto è diverso viene conservato come alternativa e non sostituito usando
+   confidenze non calibrate tra motori differenti. Errori, assenza di rete o dispositivi non
+   compatibili lasciano intatto il risultato Tesseract.
+4. `buildLines()` in `src/parser.js` raggruppa gli elementi per coordinata verticale e li
    ordina da sinistra a destra. Le estrazioni lavorano quindi sulla geometria del documento,
    non soltanto su una lunga stringa.
-4. Gli estrattori cercano anagrafica, periodo, CCNL, elementi fissi, voci, contributi,
+5. Gli estrattori cercano anagrafica, periodo, CCNL, elementi fissi, voci, contributi,
    riepilogo fiscale, totali, TFR, progressivi, ratei e orario. Le righe senza una tabella
    classica vengono lette tramite etichette e contesto della sezione.
-5. Uno stesso campo può avere più candidati. Ogni candidato conserva valore, metodo,
+6. Uno stesso campo può avere più candidati. Ogni candidato conserva valore, metodo,
    confidenza, pagina, coordinate e testo di origine; la risoluzione finale confronta anche
    somme delle voci e quadratura del netto.
-6. L'evidenza visuale non punta semplicemente alla prima etichetta trovata: cerca la cella
+7. L'evidenza visuale non punta semplicemente alla prima etichetta trovata: cerca la cella
    che contiene il valore estratto, valuta tutte le etichette omonime e può isolare una
    sottostringa quando il PDF fonde più colonne nello stesso elemento.
-7. `src/checks.js` riceve il record già confermato e produce risultati espliciti con livello,
+8. `src/checks.js` riceve il record già confermato e produce risultati espliciti con livello,
    titolo, dettaglio, formula e fonti. Il motore non modifica i dati originali.
-8. Il PDF originale e le anteprime non vengono archiviati. Dopo la conferma vengono salvati
+9. Il PDF originale e le anteprime non vengono archiviati. Dopo la conferma vengono salvati
    nel browser il record strutturato e i suoi metadati utili.
 
 ### Modello dati principale
@@ -522,7 +535,8 @@ non viene mostrato: è preferibile nessuna evidenza a un'evidenza ingannevole.
 |---|---|---|
 | struttura HTML, CSP o metadati iniziali | `src/template.html` | `<head>`, viste e contenitori principali |
 | colori, responsive e accessibilità visiva | `src/app.css` | componenti, media query e stati focus |
-| navigazione, import, OCR, archivio, backup | `src/ui.js` | `handleFile`, `parseDaOcr`, `render*`, `Store` |
+| navigazione, import, OCR principale, riassunto, backup | `src/ui.js` | `handleFile`, `ocrDataMulti`, `render*`, `Store` |
+| secondo OCR locale e fusione | `src/ai-ocr.js`, `pwa/ai/` | `shouldUseSpecialist`, `recognize`, `mergeSpecialist` |
 | riconoscimento di campi e tabelle | `src/parser.js` | `buildLines`, funzioni `extract*`, `parsePdfPages` |
 | riconoscimento del software paghe | `src/parser.js` | `rilevaSoftware` |
 | termini specifici di un settore | `src/parser-sectors.js` | moduli e alias settoriali |
@@ -586,14 +600,17 @@ controllo dovrebbe:
 
 ```bash
 node tests/parser.test.mjs
+node tests/ai-ocr.test.mjs
+node tests/ui-pwa.test.mjs
 node build.mjs
 git diff --check
 ```
 
 Il primo comando carica gli script in un contesto isolato di Node e verifica parser,
-classificazione, controlli, CCNL, OCR testuale e moduli di settore. Il secondo ricrea
-`pwa/index.html` e fallisce se manca uno dei segnaposto del template. La CI esegue entrambi
-su ogni `push` e Pull Request.
+classificazione, controlli, CCNL, OCR testuale, moduli di settore e matrice multi-layout.
+Il secondo verifica soglia di attivazione, geometria, decoder, fusione e hash degli asset
+del secondo OCR. La build ricrea `pwa/index.html` e fallisce se manca uno dei segnaposto del
+template. La CI esegue tutti questi controlli su ogni `push` e Pull Request.
 
 Per una modifica grafica, prova almeno:
 

@@ -225,6 +225,16 @@ Totale competenze 2.100,00
 Totale trattenute 500,00
 Netto a pagare 1.600,00
 `);
+
+const cnelHeaderRegression = Parser.parseFreeText(`
+CEDOLINO GIUGNO 2026
+COD.DIP. LIVELLO DESCRIZIONE QUALIFICA Codice CNEL CCNL
+13934 4 OPERAI H05Y Pubblici Esercizi
+TOTALE COMPETENZE 2.145,48
+TOTALE TRATTENUTE 376,45
+NETTO IN BUSTA 1.769,00
+`);
+assert.equal(cnelHeaderRegression.record.ccnl.cnel, 'H05Y', 'CCNL nell’intestazione non deve diventare il falso codice CNL');
 assert.equal(genericOcr.record.periodo.mese, 6);
 assert.equal(genericOcr.record.voci.some(v => /Indennità di turno/i.test(v.descrizione)), true);
 approx(genericOcr.record.totali.netto, 1600);
@@ -267,3 +277,6 @@ for (const [sector, sample] of Object.entries(sectorSamples)) assert.equal(Secto
 assert.ok(Sectors.parserSectorVoiceHints().length >= 30);
 
 console.log('OK — parser multi-layout, riconciliazione, CCNL, OCR e 9 moduli di settore');
+
+// La matrice settoriale e documentale viene importata anche dalla suite CI principale.
+await import('./parser-matrix.test.mjs');

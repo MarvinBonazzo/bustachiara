@@ -174,10 +174,10 @@ function showView(name) {
 }
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('.tab'); if (!b) return;
-  if (b.id === 'riassunto-btn') return;
   const v = b.dataset.view;
   // le viste dipendenti dai dati vengono ridisegnate a ogni apertura
   if (v === 'dettaglio') renderDettaglio(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
+  else if (v === 'riassunto') renderRiassunto(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
   else if (v === 'importa') renderImporta();
   else if (v === 'consigli') renderConsigli();
   showView(v);
@@ -187,71 +187,22 @@ $('#tabs').addEventListener('click', (e) => {
    IMPORTA
    ============================================================ */
 function renderImporta() {
-  const recs = recSorted();
-  const last = recs[recs.length - 1];
-  const conNetto = recs.filter(r => r.totali.netto != null);
-  const media = conNetto.length ? conNetto.reduce((s, r) => s + r.totali.netto, 0) / conNetto.length : 0;
-  const archivio = !recs.length ? `
-  <div class="card steps-card">
-    <p class="eyebrow">COME FUNZIONA</p>
-    <h2>Dal documento alle risposte, in tre passi</h2>
-    <div class="steps">
-      <div class="step"><span>1</span><div><b>Leggo</b><p>Estraggo voci, totali, TFR, ferie e contratto dal tuo file.</p></div></div>
-      <div class="step"><span>2</span><div><b>Tu verifichi</b><p>Confermi o correggi i dati: resti sempre tu ad avere l’ultima parola.</p></div></div>
-      <div class="step"><span>3</span><div><b>Faccio chiarezza</b><p>Spiego le voci, rifaccio i conti e segnalo cosa merita attenzione.</p></div></div>
-    </div>
-  </div>` : `
-  <div class="kpis">
-    <div class="kpi"><div class="v">${fmtEur(last.totali.netto)} €</div><div class="l">Ultimo netto (${esc(periodoLabel(last.periodo))}) ${iBtn('netto')}</div></div>
-    <div class="kpi"><div class="v">${fmtEur(media)} €</div><div class="l">Netto medio</div></div>
-    ${last.tfr && last.tfr.fondo3112 != null ? `<div class="kpi"><div class="v">${fmtEur((last.tfr.fondo3112 || 0) + (last.tfr.quotaAnno || 0))} €</div><div class="l">TFR stimato ad oggi ${iBtn('tfr')}</div></div>` : ''}
-    <div class="kpi"><div class="v">${recs.length}</div><div class="l">Buste archiviate</div></div>
-  </div>
-  ${conNetto.length >= 2 ? `<div class="card"><h2>Andamento del netto</h2>${sparkSVG(recs)}</div>` : ''}
-  <div class="card"><h2>Le tue buste</h2>
-    ${[...recs].reverse().map((r, idx, arr) => {
-      const prev = [...recs].reverse().find(candidate => periodoKey(candidate.periodo) < periodoKey(r.periodo)
-        && employerKey(candidate) === employerKey(r) && tipoCedolino(candidate) === tipoCedolino(r));
-      const delta = prev && prev.totali.netto != null && r.totali.netto != null ? r.totali.netto - prev.totali.netto : null;
-      return `<div class="rec-card" data-id="${esc(r.id)}">
-        <div><div class="per">${esc(periodoLabel(r.periodo))} <span class="badge dato">${esc(tipoCedolinoLabel(r))}</span></div><div class="muted small">${esc(r.azienda.nome || '')}</div></div>
-        <div style="text-align:right"><div class="netto">${fmtEur(r.totali.netto)} €</div>
-        ${delta != null ? `<div class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : '−'} ${fmtEur(Math.abs(delta))} € vs mese prec.</div>` : ''}</div>
-      </div>`;
-    }).join('')}
-    <p class="muted small">Tocca una busta per aprirne l’analisi completa.</p>
-  </div>
-  <div class="card"><h2>Dove sono salvati questi dati</h2>
-    <p>Tutto quello che vedi qui è salvato <b>solo nella memoria del browser di questo dispositivo</b> (si chiama localStorage): niente cloud, niente account, nessun server. In pratica:</p>
-    <p class="muted">— Se apri l’app su un altro dispositivo o con un altro browser, lì l’archivio parte vuoto: ogni browser ha il suo, separato.<br>
-    — Se usi una finestra in incognito/privata, i dati spariscono quando la chiudi.<br>
-    — Se cancelli i dati di navigazione (cronologia/siti) del browser, cancelli anche questo archivio.<br>
-    — Per fare un backup o portare i dati altrove: scheda <b>Backup → Esporta tutto</b> (scarica un file JSON, da custodire come un documento riservato) e poi <b>Importa backup</b> sull’altro dispositivo.</p>
-  </div>`;
   $('#view-importa').innerHTML = `
-  <div class="card import-hero">
-    <div class="hero-copy">
-      <p class="eyebrow">BUSTA PAGA CHIARA, LETTERALMENTE</p>
-      <h2>Porta chiarezza nei numeri del tuo stipendio.</h2>
-      <p>Importa la busta paga: BustaChiara traduce le voci, ricontrolla i calcoli e ti indica cosa approfondire, in parole comprensibili.</p>
-      <div class="trust-row" aria-label="Garanzie di privacy e funzionamento">
-        <span>🔒 Nessun caricamento</span><span>✈️ Funziona offline</span><span>✓ Verifica prima di salvare</span>
-      </div>
-    </div>
+  <div class="home-import">
     <div id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-help">
       <div class="dz-icon"></div>
-      <p><b>Scegli la tua busta paga</b><br><span class="drop-secondary">oppure trascinala qui</span><br><span id="dropzone-help" class="muted small">PDF, scansione o foto · tutto viene letto su questo dispositivo</span></p>
+      <p><b>Scegli la tua busta paga</b><br><span class="drop-secondary">oppure trascinala qui</span><br><span id="dropzone-help" class="muted small">PDF, scansione o foto</span></p>
       <input type="file" id="file-input" accept="application/pdf,image/*" aria-label="Scegli un PDF o un'immagine della busta paga" hidden>
     </div>
     <div id="import-status" role="status" aria-live="polite" style="display:none; margin-top:12px">
       <p id="import-msg" class="muted"></p><progress id="import-bar" max="1" value="0"></progress>
     </div>
-    <div class="btnrow">
-      <button class="ghost" id="btn-manual">Inserimento manuale</button>
-      <button class="demo-link" id="btn-demo">Prima voglio vedere un esempio →</button>
+    <div class="home-promises" aria-label="Garanzie di BustaChiara">
+      <p>Funziona offline.</p>
+      <p>Privacy 100%.</p>
+      <p>Non invii nessun dato a nessuno.</p>
     </div>
-  </div>
-  ${archivio}`;
+  </div>`;
   const dz = $('#dropzone'), fi = $('#file-input');
   dz.addEventListener('click', () => fi.click());
   dz.addEventListener('keydown', e => {
@@ -261,12 +212,6 @@ function renderImporta() {
   dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
   dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
   fi.addEventListener('change', () => { if (fi.files[0]) handleFile(fi.files[0]); fi.value = ''; });
-  $('#btn-manual').addEventListener('click', () => startVerifica(emptyRecord(), ['Inserimento manuale: compila i campi che hai, non serve riempirli tutti.']));
-  $('#btn-demo').addEventListener('click', () => startVerifica(demoRecord(), ['Busta di ESEMPIO (dati inventati ma coerenti): usala per esplorare l’app.'], [demoPreviewDataUrl()]));
-  $('#view-importa').onclick = (e) => {
-    const c = e.target.closest('.rec-card'); if (!c) return;
-    renderDettaglio(c.dataset.id); showView('dettaglio');
-  };
 }
 function importStatus(msg, frac) {
   $('#import-status').style.display = 'block';
@@ -351,7 +296,7 @@ async function handleFile(file) {
   } catch (err) {
     console.error(err);
     importStatus('Errore: ' + err.message, 0);
-    toast('Non sono riuscito a leggere il file: prova con l’inserimento manuale.');
+    toast('Non sono riuscito a leggere il file: prova con un PDF più nitido o una foto dritta e ben illuminata.');
   }
 }
 function pageNeedsOcr(items) {
@@ -677,8 +622,17 @@ async function ocrDataMulti(canvas, status) {
   if (!needsSecondPass) return primary;
   status && status('passaggio 2/2: miglioro contrasto e tabelle…', .64);
   const thresholded = localThresholdCanvas(canvas);
-  const secondary = await ocrData(thresholded, (message, progress) => status && status('passaggio 2/2: ' + message, .64 + (progress || 0) * .36), '6');
-  return mergeOcrPasses(primary, secondary);
+  const secondary = await ocrData(thresholded, (message, progress) => status && status('passaggio 2/2: ' + message, .64 + (progress || 0) * .18), '6');
+  const merged = mergeOcrPasses(primary, secondary);
+  if (!AiOcr.shouldUseSpecialist(merged)) return merged;
+  try {
+    const specialist = await AiOcr.recognize(canvas, (message, progress) => status && status(message, .82 + (progress || 0) * .18));
+    return AiOcr.mergeSpecialist(merged, specialist);
+  } catch (_) {
+    // Gli asset AI sono opzionali: senza rete/cache o su browser incompatibili
+    // la pipeline prosegue sempre con le due letture Tesseract già completate.
+    return merged;
+  }
 }
 
 /* Converte le parole OCR (con coordinate) negli "item" usati dal parser dei PDF,
@@ -1175,50 +1129,142 @@ function vociTableHTML(r) {
   }).join('')}</tbody></table></div>`;
 }
 
+function importoVoci(record, regex, used = new Set()) {
+  let totale = 0, quantita = 0;
+  (record.voci || []).forEach((voice, index) => {
+    if (used.has(index) || !regex.test(String(voice.descrizione || ''))) return;
+    const amount = Number(voice.competenza);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    used.add(index); totale += amount;
+    if (Number.isFinite(Number(voice.rifQta))) quantita += Number(voice.rifQta);
+  });
+  return { totale, quantita };
+}
+
+function commentiSemplici(record) {
+  const comments = [], used = new Set();
+  const addExtra = (title, result, sentence) => {
+    if (!result.totale) return;
+    comments.push({ title, text: sentence(result) });
+  };
+  addExtra('Riposo settimanale', importoVoci(record, /riposo\s+settimanale.*(?:non.*domenic|spostat)|magg.*riposo\s+settimanale/i, used), result =>
+    `La maggiorazione legata al riposo settimanale collocato in un giorno diverso dalla domenica ha aggiunto ${fmtEur(result.totale)} € lordi.`);
+  addExtra('Domeniche', importoVoci(record, /magg.*domenic|domenic.*magg/i, used), result =>
+    `Le maggiorazioni legate alle domeniche hanno aggiunto ${fmtEur(result.totale)} € lordi. Senza queste maggiorazioni, il lordo del mese sarebbe stato più basso dello stesso importo.`);
+  addExtra('Festivi', importoVoci(record, /magg.*festiv|festiv.*maggioraz/i, used), result =>
+    `Le maggiorazioni per i giorni festivi hanno aggiunto ${fmtEur(result.totale)} € lordi.`);
+  addExtra('Lavoro notturno', importoVoci(record, /notturn/i, used), result =>
+    `Il lavoro notturno ha aggiunto ${fmtEur(result.totale)} € lordi. Senza queste ore, il lordo sarebbe stato più basso dello stesso importo.`);
+  addExtra('Ore in più', importoVoci(record, /straordinar|supplementar|ore\s+extra/i, used), result =>
+    `Straordinari e ore supplementari hanno aggiunto ${fmtEur(result.totale)} € lordi${result.quantita ? ` per ${fmtEur(result.quantita, 1)} ore indicate` : ''}.`);
+  addExtra('Premi', importoVoci(record, /premio|bonus|incentiv|provvig|una\s*tantum/i, used), result =>
+    `Premi e incentivi hanno aggiunto ${fmtEur(result.totale)} € lordi questo mese.`);
+  addExtra('Mensilità aggiuntive', importoVoci(record, /13.?ma|tredicesim|14.?ma|quattordicesim|gratifica\s+natalizia/i, used), result =>
+    `Tredicesima o quattordicesima hanno aggiunto ${fmtEur(result.totale)} € lordi in questo cedolino.`);
+
+  const ferie = record.ratei && record.ratei.ferie;
+  if (ferie && ferie.saldo != null) {
+    const unita = /^(?:ORE|ORA|H)$/i.test(ferie.unita || '') ? 'ore' : 'giorni';
+    comments.push({ title: 'Riposo disponibile', text: `Ti restano ${fmtEur(ferie.saldo, 1)} ${unita} di ferie pagate.` });
+  }
+  const tfr = record.tfr || {};
+  if (tfr.quotaMese != null) comments.push({ title: 'TFR', text: `Questo mese sono stati messi da parte ${fmtEur(tfr.quotaMese)} € di TFR.` });
+
+  const previous = recSorted().filter(item => item.id !== record.id && item.totali && item.totali.netto != null
+    && employerKey(item) === employerKey(record) && tipoCedolino(item) === tipoCedolino(record)
+    && periodoKey(item.periodo) < periodoKey(record.periodo)).slice(-1)[0];
+  if (previous && record.totali && record.totali.netto != null) {
+    const delta = record.totali.netto - previous.totali.netto;
+    if (Math.abs(delta) >= .01) comments.push({ title: 'Rispetto al mese prima', text: `Hai ricevuto ${fmtEur(Math.abs(delta))} € netti ${delta > 0 ? 'in più' : 'in meno'} rispetto a ${periodoLabel(previous.periodo)}.` });
+  }
+  if (!comments.length) comments.push({ title: 'Questo mese', text: 'Non risultano compensi extra riconoscibili. Il cedolino mostra soprattutto la retribuzione ordinaria.' });
+  return comments.slice(0, 6);
+}
+
+function commentiSempliciHTML(record) {
+  return `<div class="simple-comments">${commentiSemplici(record).map((comment, index) => `<div class="simple-comment ${index > 3 ? 'neutral' : ''}"><b>${esc(comment.title)}</b><p>${esc(comment.text)}</p></div>`).join('')}</div>`;
+}
+
+function testoControlloSemplice(finding) {
+  if (/CCNL non identificato/i.test(finding.titolo)) return 'Non ho riconosciuto il contratto. Apri “Modifica dati” e selezionalo confrontando il cedolino.';
+  if (/quadratur|somma/i.test(`${finding.titolo} ${finding.area}`)) return 'Un totale non coincide con la somma delle righe lette. Confronta competenze, trattenute e netto col documento.';
+  if (/paga base sotto/i.test(finding.titolo)) return 'La paga base sembra inferiore al riferimento disponibile. Falla controllare prima di trarre conclusioni.';
+  if (/festiv|domenic/i.test(finding.titolo)) return 'La paga per festivi o domeniche non è abbastanza chiara per un controllo automatico sicuro. Confrontala col tuo CCNL.';
+  return 'Questo dato merita un controllo sul cedolino o con l’ufficio paghe.';
+}
+
+function controlliSempliciHTML(findings) {
+  const urgent = findings.filter(finding => finding.livello === 'alert' || finding.livello === 'warn').slice(0, 4);
+  if (!urgent.length) return '';
+  return `<div class="card"><h2>Da controllare</h2><div class="simple-alerts">${urgent.map(finding => `<div class="simple-alert ${finding.livello}"><b>${esc(finding.titolo)}</b><span>${esc(testoControlloSemplice(finding))}</span></div>`).join('')}</div></div>`;
+}
+
+function calcolaFlussoStipendio(record) {
+  const t = record.totali || {}, d = record.derivati || Parser.derivaIndice(record);
+  const netto = Math.max(0, Number(t.netto) || 0);
+  let trattenute = t.trattenute == null || t.trattenute === '' ? NaN : Number(t.trattenute);
+  if (!Number.isFinite(trattenute)) trattenute = Math.max(0, (Number(t.competenze) || 0) - netto + (Number(t.arrotondamento) || 0));
+  trattenute = Math.max(0, trattenute);
+  let contributi = Math.max(0, Number(d.ivs && d.ivs.importo) || 0) + Math.max(0, Number(d.fis && d.fis.importo) || 0);
+  let tasse = Math.max(0, Number(d.ritenuteIrpef) || 0) + Math.max(0, Number(d.addRegionale) || 0) + Math.max(0, Number(d.addComunale) || 0);
+  const classificato = contributi + tasse;
+  if (classificato > trattenute && classificato > 0) {
+    const ratio = trattenute / classificato;
+    contributi *= ratio; tasse *= ratio;
+  }
+  const altre = Math.max(0, trattenute - contributi - tasse);
+  const totale = netto + trattenute;
+  return {
+    totale, netto, trattenute,
+    segments: [
+      { key: 'netto', label: 'A te', value: netto, color: 'var(--brand)' },
+      { key: 'contributi', label: 'Contributi', value: contributi, color: '#e08a2e' },
+      { key: 'tasse', label: 'Tasse', value: tasse, color: '#d0342c' },
+      { key: 'altre', label: 'Altre trattenute', value: altre, color: '#929c98' },
+    ].filter(segment => segment.value > .005),
+  };
+}
+
+function flussoStipendioHTML(record) {
+  const flow = calcolaFlussoStipendio(record);
+  if (!flow.totale) return '<p class="muted">Non ci sono ancora abbastanza dati per costruire il grafico.</p>';
+  return `<div class="money-flow" role="img" aria-label="Suddivisione tra netto, contributi, tasse e altre trattenute">${flow.segments.map(segment => `<span style="width:${(segment.value / flow.totale * 100).toFixed(3)}%;background:${segment.color}" title="${esc(segment.label)}: ${fmtEur(segment.value)} €"></span>`).join('')}</div>
+    <div class="money-flow-list">${flow.segments.map(segment => `<div class="money-flow-row"><span class="swatch" style="background:${segment.color}"></span><span>${esc(segment.label)}</span><b>${fmtEur(segment.value)} € · ${fmtEur(segment.value / flow.totale * 100, 0)}%</b></div>`).join('')}</div>
+    <p class="muted small">Il grafico usa il netto e il totale delle trattenute confermati: le parti sommano sempre al 100% del denaro che porta al netto.</p>`;
+}
+
+function renderRiassunto(id) {
+  const r = Store.data.records.find(item => item.id === id) || recSorted().slice(-1)[0];
+  const el = $('#view-riassunto');
+  if (!r) {
+    el.innerHTML = '<div class="card"><h2>Nessuna busta paga</h2><p>Carica un documento dalla Home per vedere qui il riassunto.</p><div class="btnrow"><button class="primary" id="summary-home">Vai alla Home</button></div></div>';
+    const button = $('#summary-home'); if (button) button.addEventListener('click', () => showView('importa'));
+    return;
+  }
+  currentDetailId = r.id;
+  el.innerHTML = `
+    ${recSorted().length > 1 ? `<label class="field" style="max-width:220px;margin-bottom:8px">Mese archiviato<select id="sel-riassunto">${recSorted().map(item => `<option value="${esc(item.id)}" ${item.id === r.id ? 'selected' : ''}>${esc(periodoLabel(item.periodo))} · ${esc(tipoCedolinoLabel(item))}</option>`).join('')}</select></label>` : ''}
+    <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
+    <div class="card"><h2>Dal lordo al netto</h2><p>Nel cedolino risultano <b>${fmtEur(r.totali.competenze)} €</b> di competenze, <b>${fmtEur(r.totali.trattenute)} €</b> di trattenute e <b>${fmtEur(r.totali.netto)} €</b> netti.</p>${flussoStipendioHTML(r)}</div>
+    <div class="card"><h2>Cosa ha cambiato il mese</h2>${commentiSempliciHTML(r)}</div>`;
+  const select = $('#sel-riassunto'); if (select) select.addEventListener('change', () => renderRiassunto(select.value));
+}
+
 function renderDettaglioCompleto(el, r, ccnl, findings) {
-  const nAnom = findings.filter(f => f.livello === 'alert').length, nWarn = findings.filter(f => f.livello === 'warn').length;
-  const urgenti = findings.filter(f => f.livello === 'alert' || f.livello === 'warn');
   el.innerHTML = `
   ${selettorePeriodo(r)}
-  ${urgenti.length ? `<div class="card" style="border-left:4px solid var(--${nAnom ? 'alert' : 'warn'})">
-    <h2 style="color:var(--${nAnom ? 'alert' : 'warn'})">Da controllare in questa busta</h2>
-    <p class="muted small">Cosa non torna, cosa verificare e come muoverti. Il resto dell’analisi è qui sotto.</p>
-    ${urgenti.map(findingHTML).join('')}
-    <p class="muted small">Come muoverti: 1) chiedi all’ufficio paghe o a chi elabora i cedolini (spesso è un errore materiale); 2) se la risposta non convince, sindacato o CAF controllano gratis; 3) per i casi gravi c’è l’Ispettorato del Lavoro.</p>
-  </div>` : ''}
-  <div class="card">
-    <h2>${esc(periodoLabel(r.periodo))} ${r.meta && r.meta.fonte !== 'pdf' ? `<span class="badge dato">${esc(r.meta.fonte)}</span>` : ''}</h2>
-    <div class="kv">
-      <div><b>Dipendente</b>${esc(r.dipendente.nome || '—')}</div>
-      <div><b>Azienda</b>${esc(r.azienda.nome || '—')}</div>
-      <div><b>CCNL ${iBtn('ccnl')}</b>${esc(ccnl ? ccnl.nome : (r.ccnl.descrizione || 'non identificato'))}${r.ccnl.cnel ? ` <span class="badge dato">CNEL ${esc(r.ccnl.cnel)}</span>` : ''}</div>
-      <div><b>Inquadramento ${iBtn('livello')}</b>${esc([r.dipendente.qualifica, r.dipendente.livello ? r.dipendente.livello + '° livello' : ''].filter(Boolean).join(' · ') || '—')}</div>
-      <div><b>Assunzione</b>${esc(r.dipendente.dataAssunzione || '—')}</div>
-      <div><b>Ore ordinarie</b>${r.orario.oreOrdinarie != null ? fmtEur(r.orario.oreOrdinarie) : '—'}</div>
-    </div>
-    <div class="btnrow">
-      <button class="ghost" id="btn-edit">Modifica dati</button>
-      <button class="ghost" id="btn-print">Stampa / salva PDF</button>
-      <button class="danger" id="btn-del">Elimina</button>
-    </div>
-  </div>
-  <div class="kpis">
-    <div class="kpi"><div class="v">${fmtEur(r.totali.netto)} €</div><div class="l">Netto ${iBtn('netto')}</div></div>
-    <div class="kpi"><div class="v">${fmtEur(r.totali.competenze)} €</div><div class="l">Competenze ${iBtn('competenza')}</div></div>
-    <div class="kpi"><div class="v">${fmtEur(r.totali.trattenute)} €</div><div class="l">Trattenute ${iBtn('trattenuta')}</div></div>
-    ${r.tfr && r.tfr.fondo3112 != null ? `<div class="kpi"><div class="v">${fmtEur(r.tfr.fondo3112)} €</div><div class="l">TFR al 31/12 ${iBtn('tfr')}</div></div>` : ''}
-    ${r.ratei && r.ratei.ferie ? `<div class="kpi"><div class="v">${fmtEur(r.ratei.ferie.saldo, 1)}</div><div class="l">Ferie residue (${/^(?:ORE|ORA|H)$/i.test(r.ratei.ferie.unita || '') ? 'h' : 'gg'}) ${iBtn('ferie')}</div></div>` : ''}
-    ${r.ratei && r.ratei.permessi ? `<div class="kpi"><div class="v">${fmtEur(r.ratei.permessi.saldo, 1)}</div><div class="l">Permessi residui (h) ${iBtn('rol')}</div></div>` : ''}
-  </div>
-  ${sez('Le voci, spiegate una per una', `<p class="muted small">Tocca la “i” di una voce per capire cos’è, come si calcola e cosa controllare.</p>${vociTableHTML(r)}`)}
-  ${elementiCard(r)}
-  ${tfrCard(r)}
-  ${rateiCard(r)}
-  ${progressiviCard(r)}
-  ${ccnl ? ccnlInfoCard(ccnl, r) : sez('CCNL non identificato', `<p class="muted">Selezionalo in “Modifica dati” per attivare i confronti su ferie, permessi e minimi.</p>${fontiHTML(['cnel'])}`)}
-  ${sez(`Informazioni generali — controlli automatici <span class="muted small">(${findings.length} verifiche: ${nAnom} anomalie, ${nWarn} da controllare)</span>`,
-    `<p class="muted small">Ogni controllo mostra la formula usata e dove verificare di persona. Un esito “Verifica” non è una condanna: è un punto da chiarire con ufficio paghe, sindacato o consulente.</p>
-    ${findings.map(findingHTML).join('')}`)}`;
+  <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
+  ${controlliSempliciHTML(findings)}
+  <div class="card"><h2>In parole semplici</h2>${commentiSempliciHTML(r)}</div>
+  <div class="card"><h2>Dati utili</h2><div class="kv">
+    <div><b>Azienda</b>${esc(r.azienda.nome || '—')}</div>
+    <div><b>Contratto</b>${esc(ccnl ? ccnl.nome : (r.ccnl.descrizione || 'Non identificato'))}${r.ccnl.cnel ? ` · CNEL ${esc(r.ccnl.cnel)}` : ''}</div>
+    <div><b>Livello</b>${esc(r.dipendente.livello || '—')}</div>
+    <div><b>Competenze</b>${fmtEur(r.totali.competenze)} €</div>
+    <div><b>Trattenute</b>${fmtEur(r.totali.trattenute)} €</div>
+    ${r.ratei && r.ratei.ferie && r.ratei.ferie.saldo != null ? `<div><b>Ferie rimaste</b>${fmtEur(r.ratei.ferie.saldo, 1)} ${/^(?:ORE|ORA|H)$/i.test(r.ratei.ferie.unita || '') ? 'ore' : 'giorni'}</div>` : ''}
+  </div></div>
+  <div class="btnrow detail-actions"><button class="ghost" id="btn-edit">Modifica dati</button><button class="ghost" id="btn-print">Stampa</button><button class="danger" id="btn-del">Elimina</button></div>`;
   bindDettaglioCommon(el, r);
 }
 
@@ -1873,7 +1919,6 @@ async function installaApp() {
   Store.load();
 
   // controlli barra superiore
-  $('#riassunto-btn').addEventListener('click', apriRiassunto);
   $('#progetto-btn').addEventListener('click', () => showView('progetto'));
   $('#install-btn').addEventListener('click', installaApp);
   $('#privacy-badge').addEventListener('click', () => openInfo('100% privacy', '<p>PDF, foto e numeri vengono elaborati <b>interamente su questo dispositivo</b>. Non c’è un account e non c’è un server a cui inviare la busta paga.</p><p>La Content-Security-Policy blocca le connessioni esterne durante l’analisi. Il PDF originale non viene salvato; restano soltanto i dati che confermi.</p><p class="muted small">La cronologia è nella memoria di questo browser. Per non perderla, crea periodicamente un backup dalla sezione Backup.</p>'));

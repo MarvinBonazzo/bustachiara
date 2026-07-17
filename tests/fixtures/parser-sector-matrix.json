@@ -1,0 +1,325 @@
+[
+  {
+    "id": "privato-zucchetti-turismo",
+    "family": "Privato LUL / Zucchetti / turismo",
+    "type": "pages",
+    "pages": [
+      [
+        [800, [[30, "ZUCCHETTI - LIBRO UNICO DEL LAVORO"], [430, "PERIODO DI RETRIBUZIONE"]]],
+        [788, [[430, "SETTEMBRE 2026"]]],
+        [760, [[30, "CCNL APPLICATO"], [210, "CODICE CNEL"], [340, "LIVELLO"]]],
+        [748, [[30, "TURISMO ALBERGHI CONFCOMMERCIO"], [210, "H052"], [340, "4"]]],
+        [700, [[30, "VOCI VARIABILI DEL MESE"], [290, "IMPORTO BASE"], [370, "RIFERIMENTO"], [470, "TRATTENUTE"], [550, "COMPETENZE"]]],
+        [680, [[30, "Z00001 Retribuzione ordinaria"], [290, "10,00000"], [370, "160,000"], [550, "1.600,00"]]],
+        [660, [[30, "Z00310 Maggiorazione lavoro festivo"], [290, "12,00000"], [370, "10,000"], [550, "120,00"]]],
+        [640, [[30, "Z00000 Contributo INPS"], [290, "1.720,00"], [370, "9,190"], [470, "158,07"]]],
+        [300, [[410, "TOTALE COMPETENZE"], [550, "1.720,00"]]],
+        [280, [[410, "TOTALE TRATTENUTE"], [550, "420,00"]]],
+        [260, [[440, "NETTO DEL MESE"], [550, "1.300,00"]]]
+      ]
+    ],
+    "expected": {
+      "meta.software": "Zucchetti",
+      "meta.settore": "privato-lul",
+      "documento.tipo": "ordinario",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "ccnl.cnel": "H052",
+      "dipendente.livello": "4",
+      "totali.competenze": 1720,
+      "totali.trattenute": 420,
+      "totali.netto": 1300
+    },
+    "expectedVoiceCount": 3,
+    "voices": [
+      { "match": "Retribuzione ordinaria", "side": "competenza", "amount": 1600, "class": "Retribuzione ordinaria" },
+      { "match": "Maggiorazione lavoro festivo", "side": "competenza", "amount": 120 },
+      { "match": "Contributo INPS", "side": "trattenuta", "amount": 158.07 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "pubblico-noipa",
+    "family": "NoiPA / pubblico impiego",
+    "type": "text",
+    "text": "NOIPA CEDOLINO UNICO\nRATA DI RIFERIMENTO: OTTOBRE 2026\nCOMPETENZE FISSE\nStipendio tabellare 1.950,00\nIndennita di amministrazione 300,00\nRitenuta previdenziale INPDAP 220,00\nRitenute IRPEF 350,00\nTOTALE COMPETENZE 2.250,00\nTOTALE TRATTENUTE 570,00\nIMPORTO NETTO 1.680,00",
+    "expected": {
+      "meta.software": "NoiPA",
+      "meta.settore": "pubblico-noipa",
+      "documento.tipo": "ordinario",
+      "periodo.mese": 10,
+      "periodo.anno": 2026,
+      "totali.competenze": 2250,
+      "totali.trattenute": 570,
+      "totali.netto": 1680
+    },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Stipendio tabellare", "side": "competenza", "amount": 1950 },
+      { "match": "Indennita di amministrazione", "side": "competenza", "amount": 300 },
+      { "match": "INPDAP", "side": "trattenuta", "amount": 220 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "edilizia-cassa-edile",
+    "family": "Edilizia / Cassa Edile",
+    "type": "text",
+    "text": "PROSPETTO PAGA CASSA EDILE\nPERIODO 09/2026\nCODICE CNEL F012\nRetribuzione ordinaria 11,00000 173,00 1.903,00\nElemento variabile della retribuzione EVR 76,12\nAccantonamento Cassa Edile GNF 270,23\nContributo INPS 2.249,35 206,68\nTOTALE COMPETENZE 2.249,35\nTOTALE TRATTENUTE 506,68\nNETTO A PAGARE 1.742,67",
+    "expected": {
+      "meta.software": "Cassa Edile / edilizia",
+      "meta.settore": "edilizia",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "ccnl.cnel": "F012",
+      "totali.competenze": 2249.35,
+      "totali.trattenute": 506.68,
+      "totali.netto": 1742.67
+    },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Retribuzione ordinaria", "side": "competenza", "amount": 1903, "class": "Retribuzione ordinaria" },
+      { "match": "EVR", "side": "competenza", "amount": 76.12, "class": "Elemento variabile della retribuzione (EVR)" },
+      { "match": "Accantonamento Cassa Edile GNF", "side": "competenza", "amount": 270.23, "class": "Accantonamento Cassa Edile ferie e gratifica" }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "agricolo-operai",
+    "family": "Operai agricoli",
+    "type": "text",
+    "text": "CEDOLINO OPERAIO AGRICOLO E FLOROVIVAISTA\nGIORNATE AGRICOLE - PERIODO SETTEMBRE 2026\nCODICE CNEL A00C\nGiornate agricole ordinarie 75,00000 22,00 1.650,00\nTerzo elemento agricolo 8,50000 22,00 187,00\nFestivita operai agricoli 75,00\nContributo INPS agricoltura 1.912,00 175,69\nTOTALE COMPETENZE 1.912,00\nTOTALE TRATTENUTE 412,00\nNETTO A PAGARE 1.500,00",
+    "expected": {
+      "meta.settore": "agricoltura",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "ccnl.cnel": "A00C",
+      "totali.competenze": 1912,
+      "totali.trattenute": 412,
+      "totali.netto": 1500
+    },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Giornate agricole ordinarie", "side": "competenza", "amount": 1650 },
+      { "match": "Terzo elemento agricolo", "side": "competenza", "amount": 187, "class": "Elemento retributivo territoriale" },
+      { "match": "Festivita operai agricoli", "side": "competenza", "amount": 75 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "lavoro-domestico-convivente",
+    "family": "Lavoro domestico convivente",
+    "type": "text",
+    "text": "FAC SIMILE CEDOLINO PAGA (MENSILE) - LAVORO DOMESTICO\nCOLF CONVIVENTE - SETTEMBRE 2026\nRetribuzione mensile domestico 1.200,00\nIndennita vitto e alloggio 120,00\nContributi INPS lavoro domestico 121,44\nContributo CAS.SA.COLF 6,56\nTOTALE LORDO 1.320,00\nTOTALE TRATTENUTE 220,00\nRETRIBUZIONE NETTA 1.100,00",
+    "expected": {
+      "meta.software": "Lavoro domestico",
+      "meta.settore": "domestico",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "totali.competenze": 1320,
+      "totali.trattenute": 220,
+      "totali.netto": 1100
+    },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Retribuzione mensile domestico", "side": "competenza", "amount": 1200 },
+      { "match": "vitto e alloggio", "side": "competenza", "amount": 120, "class": "Vitto e alloggio / indennita sostitutiva" },
+      { "match": "CAS.SA.COLF", "side": "trattenuta", "amount": 6.56, "class": "Contributo CAS.SA.COLF" }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "cooperativa-sociale",
+    "family": "Cooperativa sociale",
+    "type": "text",
+    "text": "LIBRO UNICO DEL LAVORO\nCCNL COOPERATIVE SOCIALI CODICE CNEL T151\nPERIODO 09/2026 LIVELLO C2\nPaga ordinaria 1.620,00\nIndennita professionale 80,00\nContributo INPS 1.700,00 156,23\nTOTALE COMPETENZE 1.700,00\nTOTALE TRATTENUTE 400,00\nNETTO IN BUSTA 1.300,00",
+    "expected": {
+      "meta.settore": "privato-lul",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "ccnl.cnel": "T151",
+      "dipendente.livello": "C2",
+      "totali.competenze": 1700,
+      "totali.trattenute": 400,
+      "totali.netto": 1300
+    },
+    "expectedVoiceCount": 3,
+    "voices": [
+      { "match": "Paga ordinaria", "side": "competenza", "amount": 1620, "class": "Retribuzione ordinaria" },
+      { "match": "Indennita professionale", "side": "competenza", "amount": 80 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "agenzia-somministrazione",
+    "family": "Somministrazione / agenzia per il lavoro",
+    "type": "text",
+    "text": "LIBRO UNICO DEL LAVORO - ASSOLAVORO SOMMINISTRAZIONE\nCCNL AGENZIE DI SOMMINISTRAZIONE CODICE CNEL V212\nPERIODO 09/2026 LIVELLO D1\nRetribuzione ordinaria 1.500,00\nIndennita di disponibilita 300,00\nElemento perequativo 50,00\nContributo INPS 1.850,00 170,02\nTOTALE COMPETENZE 1.850,00\nTOTALE TRATTENUTE 450,00\nNETTO IN BUSTA 1.400,00",
+    "expected": {
+      "meta.settore": "privato-lul",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "ccnl.cnel": "V212",
+      "dipendente.livello": "D1",
+      "totali.competenze": 1850,
+      "totali.trattenute": 450,
+      "totali.netto": 1400
+    },
+    "expectedVoiceCount": 4,
+    "voices": [
+      { "match": "Retribuzione ordinaria", "side": "competenza", "amount": 1500, "class": "Retribuzione ordinaria" },
+      { "match": "Indennita di disponibilita", "side": "competenza", "amount": 300, "class": "Indennita di disponibilita" },
+      { "match": "Elemento perequativo", "side": "competenza", "amount": 50 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "dirigente-industria",
+    "family": "Dirigente industria",
+    "type": "text",
+    "text": "CEDOLINO PAGA - QUALIFICA DIRIGENTE\nPREVINDAI FASDAC\nCODICE CNEL B011 - SETTEMBRE 2026\nRetribuzione ordinaria 5.000,00\nIndennita di funzione dirigenziale 1.000,00\nMBO dirigente 500,00\nContributo PREVINDAI 260,00\nContributo FASDAC 140,00\nTOTALE COMPETENZE 6.500,00\nTOTALE TRATTENUTE 2.000,00\nNETTO IN BUSTA 4.500,00",
+    "expected": {
+      "meta.settore": "dirigenti",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "ccnl.cnel": "B011",
+      "totali.competenze": 6500,
+      "totali.trattenute": 2000,
+      "totali.netto": 4500
+    },
+    "expectedVoiceCount": 5,
+    "voices": [
+      { "match": "Retribuzione ordinaria", "side": "competenza", "amount": 5000, "class": "Retribuzione ordinaria" },
+      { "match": "Indennita di funzione dirigenziale", "side": "competenza", "amount": 1000 },
+      { "match": "MBO dirigente", "side": "competenza", "amount": 500 },
+      { "match": "PREVINDAI", "side": "trattenuta", "amount": 260 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "turni-domeniche-festivo-notturno-straordinario",
+    "family": "Turni e maggiorazioni",
+    "type": "text",
+    "text": "CEDOLINO PAGA SETTEMBRE 2026\nRetribuzione ordinaria 10,00 160,00 1.600,00\nMaggiorazione domenicale 8,00 4,00 32,00 ORE\nMaggiorazione lavoro festivo 12,00 8,00 96,00 ORE\nMaggiorazione lavoro notturno 2,00 20,00 40,00 ORE\nStraordinario 25 per cento 12,00 10,00 120,00 ORE\nTOTALE COMPETENZE 1.888,00\nTOTALE TRATTENUTE 488,00\nNETTO IN BUSTA 1.400,00",
+    "expected": {
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "totali.competenze": 1888,
+      "totali.trattenute": 488,
+      "totali.netto": 1400,
+      "derivati.domenicale.oraria": 8,
+      "derivati.domenicale.ore": 4,
+      "derivati.domenicale.importo": 32,
+      "derivati.festivo.oraria": 12,
+      "derivati.festivo.ore": 8,
+      "derivati.festivo.importo": 96
+    },
+    "expectedVoiceCount": 5,
+    "voices": [
+      { "match": "domenicale", "side": "competenza", "amount": 32 },
+      { "match": "lavoro festivo", "side": "competenza", "amount": 96 },
+      { "match": "lavoro notturno", "side": "competenza", "amount": 40 },
+      { "match": "Straordinario", "side": "competenza", "amount": 120 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "tredicesima-separata",
+    "family": "Tredicesima separata",
+    "type": "text",
+    "text": "CEDOLINO TREDICESIMA MENSILITA\nDICEMBRE 2026\nTredicesima mensilita 1.500,00\nTOTALE COMPETENZE 1.500,00\nTOTALE TRATTENUTE 300,00\nNETTO A PAGARE 1.200,00",
+    "expected": {
+      "documento.tipo": "tredicesima",
+      "periodo.mese": 12,
+      "periodo.anno": 2026,
+      "totali.competenze": 1500,
+      "totali.trattenute": 300,
+      "totali.netto": 1200
+    },
+    "expectedVoiceCount": 1,
+    "voices": [
+      { "match": "Tredicesima mensilita", "side": "competenza", "amount": 1500, "class": "Tredicesima" }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "quattordicesima-separata",
+    "family": "Quattordicesima separata",
+    "type": "text",
+    "text": "CEDOLINO QUATTORDICESIMA MENSILITA\nGIUGNO 2026\nQuattordicesima mensilita 1.400,00\nTOTALE COMPETENZE 1.400,00\nTOTALE TRATTENUTE 280,00\nNETTO A PAGARE 1.120,00",
+    "expected": {
+      "documento.tipo": "quattordicesima",
+      "periodo.mese": 6,
+      "periodo.anno": 2026,
+      "totali.competenze": 1400,
+      "totali.trattenute": 280,
+      "totali.netto": 1120
+    },
+    "expectedVoiceCount": 1,
+    "voices": [
+      { "match": "Quattordicesima mensilita", "side": "competenza", "amount": 1400, "class": "Quattordicesima" }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "conguaglio-fiscale",
+    "family": "Conguaglio fiscale annuale",
+    "type": "text",
+    "text": "CEDOLINO CONGUAGLIO FISCALE ANNUALE\nDICEMBRE 2026\nRetribuzione ordinaria 1.800,00\nConguaglio IRPEF a credito 200,00\nTOTALE COMPETENZE 2.000,00\nTOTALE TRATTENUTE 500,00\nNETTO A PAGARE 1.500,00",
+    "expected": {
+      "documento.tipo": "conguaglio",
+      "meta.settore": "cessazione-conguaglio",
+      "periodo.mese": 12,
+      "periodo.anno": 2026,
+      "totali.competenze": 2000,
+      "totali.trattenute": 500,
+      "totali.netto": 1500
+    },
+    "expectedVoiceCount": 2,
+    "voices": [
+      { "match": "Conguaglio IRPEF a credito", "side": "competenza", "amount": 200 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "cessazione-tfr-ferie",
+    "family": "Cessazione e liquidazione",
+    "type": "text",
+    "text": "CEDOLINO DI CESSAZIONE - FINE RAPPORTO\nSETTEMBRE 2026\nLiquidazione TFR 5.000,00\nFerie non godute 400,00\nIndennita sostitutiva preavviso 1.000,00\nTOTALE COMPETENZE 6.400,00\nTOTALE TRATTENUTE 1.400,00\nNETTO A PAGARE 5.000,00",
+    "expected": {
+      "documento.tipo": "cessazione",
+      "meta.settore": "cessazione-conguaglio",
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "totali.competenze": 6400,
+      "totali.trattenute": 1400,
+      "totali.netto": 5000
+    },
+    "expectedVoiceCount": 3,
+    "voices": [
+      { "match": "Liquidazione TFR", "side": "competenza", "amount": 5000 },
+      { "match": "Ferie non godute", "side": "competenza", "amount": 400 },
+      { "match": "Indennita sostitutiva preavviso", "side": "competenza", "amount": 1000 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "ocr-rumoroso",
+    "family": "OCR rumoroso / refusi realistici",
+    "type": "text",
+    "text": "CED0LINO PAGA 09/2026\nRetnbuzione ordmana 10,00000 160,00 1.600,00\nMaggiorazlone lavor0 notturn0 2,00000 20,00 40,00\nContribut0 INPS 1.640,00 150,72\nTOTALE COMPETENZE 1.640,00\nTOTALE TRATTENUTE 340,00\nNETTO A PAGARE 1.300,00",
+    "expected": {
+      "periodo.mese": 9,
+      "periodo.anno": 2026,
+      "totali.competenze": 1640,
+      "totali.trattenute": 340,
+      "totali.netto": 1300
+    },
+    "expectedVoiceCount": 3,
+    "voices": [
+      { "match": "Retnbuzione ordmana", "side": "competenza", "amount": 1600, "class": "Retribuzione ordinaria" },
+      { "match": "Maggiorazlone lavor notturn", "side": "competenza", "amount": 40, "class": "Lavoro notturno" }
+    ],
+    "quadrature": true
+  }
+]
