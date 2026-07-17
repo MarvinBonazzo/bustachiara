@@ -13,6 +13,8 @@ jobs:
         with:
           node-version: 22
       - run: node tests/parser.test.mjs
+      - run: node tests/ai-ocr.test.mjs
+      - run: node tests/ui-pwa.test.mjs
       - run: node build.mjs
       - name: Controlla che la build contenga parser e indice CNEL
         run: |

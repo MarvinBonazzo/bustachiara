@@ -27,6 +27,7 @@ const parts = {
   '/*__DATA__*/': jsSafe(readFileSync(src('data.js'), 'utf8')),
   '/*__PARSER__*/': jsSafe(readFileSync(src('parser.js'), 'utf8')),
   '/*__CHECKS__*/': jsSafe(readFileSync(src('checks.js'), 'utf8')),
+  '/*__AI_OCR__*/': jsSafe(readFileSync(src('ai-ocr.js'), 'utf8')),
   '/*__UI__*/': jsSafe(readFileSync(src('ui.js'), 'utf8')),
 };
 

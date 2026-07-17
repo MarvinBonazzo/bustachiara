@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v9-evidenze-valore';
+const CACHE = 'bustachiara-v10-ocr-locale';
 const ASSETS = [
   './',
   './index.html',
@@ -18,7 +18,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('bustachiara-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

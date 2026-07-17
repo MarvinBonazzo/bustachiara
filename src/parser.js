@@ -7,7 +7,10 @@ const NUM_TOKEN_RE = /^\(?\s*[+\-−]?\s*(?:\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,5})?|
 const NUM_ANY_RE = /[+\-−]?\s*(?:\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,5})?|\d+(?:[,.]\d{1,5})?)/g;
 const CODE_TOKEN_RE = /^(?=.{1,12}$)(?=.*\d)[A-Z0-9][A-Z0-9./_-]*$/i;
 const UNIT_RE = /^(?:ORE?|H|GG\.?|GIORNI?|NR\.?|N|%|PERC\.?|MESI?|RATEI?|SETT\.?|EURO|€)$/i;
-const CNEL_CODE_RE = /^[A-Z][A-Z0-9]{2,4}$/;
+// L'archivio ufficiale corrente usa codici di quattro caratteri: una lettera
+// iniziale, tre caratteri alfanumerici e almeno una cifra. L'ultimo vincolo
+// evita falsi positivi come la parola "CCNL" accanto all'etichetta CNEL.
+const CNEL_CODE_RE = /^(?=[A-Z0-9]{4}$)(?=.*\d)[A-Z][A-Z0-9]{3}$/;
 const CELL_SPAN_CACHE = new WeakMap();
 
 function getPathValue(object, path) {
@@ -104,6 +107,21 @@ function normalizzaTesto(value) {
     .replace(/[_|]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function extractCnelCode(value) {
+  const text = normalizzaTesto(value).toUpperCase();
+  const labels = [...text.matchAll(/\b(?:CODICE\s*)?CNEL\b/g)];
+  for (const label of labels) {
+    // Nei cedolini a colonne il codice può essere nella riga successiva e
+    // l'intestazione può proseguire con la parola CCNL. Cerchiamo quindi una
+    // finestra breve e scartiamo ogni token che non ha il formato ufficiale.
+    const afterLabel = text.slice(label.index + label[0].length, label.index + label[0].length + 140);
+    const candidates = afterLabel.match(/\b[A-Z][A-Z0-9]{3}\b/g) || [];
+    const code = candidates.find(candidate => CNEL_CODE_RE.test(candidate));
+    if (code) return code;
+  }
+  return null;
 }
 
 function plain(value) {
@@ -531,7 +549,10 @@ function extractIdentity(rec, allLines, fullText) {
   }
 
   const columnDefinitions = [
-    { re: /CODICE\s*CNEL/i, target: rec.ccnl, key: 'cnel', clean: value => String(value).toUpperCase().match(/\b[A-Z][A-Z0-9]{2,4}\b/)?.[0] },
+    { re: /CODICE\s*CNEL/i, target: rec.ccnl, key: 'cnel', clean: value => {
+      const candidates = String(value).toUpperCase().match(/\b[A-Z][A-Z0-9]{3}\b/g) || [];
+      return candidates.find(candidate => CNEL_CODE_RE.test(candidate));
+    } },
     { re: /(?:DATA\s+)?ASSUNZIONE/i, target: rec.dipendente, key: 'dataAssunzione', clean: value => String(value).match(/\b\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}\b/)?.[0] },
     { re: /^LIVELLO$/i, target: rec.dipendente, key: 'livello', clean: value => {
       const text = String(value).trim();
@@ -555,8 +576,8 @@ function extractIdentity(rec, allLines, fullText) {
   }
 
   if (!rec.ccnl.cnel) {
-    const cnel = normalizzaTesto(fullText).match(/\b(?:CODICE\s*)?CNEL\D{0,24}([A-Z][A-Z0-9]{2,4})\b/i);
-    if (cnel && CNEL_CODE_RE.test(cnel[1].toUpperCase())) rec.ccnl.cnel = cnel[1].toUpperCase();
+    const cnel = extractCnelCode(fullText);
+    if (cnel) rec.ccnl.cnel = cnel;
   }
   const levelBefore = normalizzaTesto(fullText).match(/\b([A-Z]?\d[A-Z0-9.-]{0,7})\s*(?:['°ª^]\s*)?LIVELLO\b/i);
   const levelAfter = normalizzaTesto(fullText).match(/\b(?:LIVELLO|INQUADRAMENTO)[ \t]*[:.-]?[ \t]*([A-Z]?\d[A-Z0-9.-]{0,7})\b/i);
@@ -1559,8 +1580,8 @@ function parseFreeText(text) {
 
   const cf = normalized.toUpperCase().match(/\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/);
   if (cf) rec.dipendente.cf = cf[0];
-  const cnel = normalized.match(/\b(?:CODICE\s*)?CNEL\D{0,20}([A-Z][A-Z0-9]{2,4})\b/i);
-  if (cnel && CNEL_CODE_RE.test(cnel[1].toUpperCase())) rec.ccnl.cnel = cnel[1].toUpperCase();
+  const cnel = extractCnelCode(normalized);
+  if (cnel) rec.ccnl.cnel = cnel;
   const level = normalized.match(/\bLIVELLO\s*[:.-]?\s*([A-Z0-9.-]{1,8})\b/i)
     || normalized.match(/\b([A-Z0-9.-]{1,8})\s*LIVELLO\b/i);
   if (level) rec.dipendente.livello = level[1];
@@ -1572,12 +1593,20 @@ function parseFreeText(text) {
   for (const raw of String(text || '').split(/\n/)) {
     const line = normalizzaTesto(raw);
     if (line.length < 5) continue;
+    // Intestazioni con date, codici o livelli contengono numeri ma non sono
+    // righe economiche. Vanno escluse prima di rimuovere le cifre, altrimenti
+    // "PERIODO 09/2026" diventerebbe una falsa competenza da 2.026 euro.
+    if (/^(?:PERIODO|MESE|RATA\s+DI\s+RIFERIMENTO|CODICE\s+CNEL|CCNL\b.*CODICE\s+CNEL|MATRICOLA|CODICE\s+FISCALE|LIVELLO\b)/i.test(line)) continue;
+    const hasYear = /\b(?:19|20)\d{2}\b/.test(line);
+    const headingText = line.replace(/0/g, 'O');
+    const looksLikePeriodHeading = /\b(?:GENNAIO|FEBBRAIO|MARZO|APRILE|MAGGIO|GIUGNO|LUGLIO|AGOSTO|SETTEMBRE|OTTOBRE|NOVEMBRE|DICEMBRE|PERIODO|CED\s*O?LINO|RATA\s+DI\s+RIFERIMENTO)\b/i.test(headingText);
+    if (hasYear && looksLikePeriodHeading && !/[,.]\d{2}\b/.test(line)) continue;
     const matches = line.match(NUM_ANY_RE) || [];
     const numbers = matches.map(itNum).filter(value => value != null);
     if (!numbers.length) continue;
     let description = line.replace(NUM_ANY_RE, ' ').replace(/[|]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
     if (!/[A-Za-zÀ-ù]{3}/.test(description)) continue;
-    if (/TOTALE|NETTO|PAGA\s+BASE|CONTINGENZA|SUPERMINIMO|ELEMENTI\s+RETRIBUTIVI|VOCI\s+VARIABILI|RIFERIMENTO|CODICE\s+FISCALE|COGNOME\s+E\s+NOME/i.test(description)) continue;
+    if (/TOTALE|\bNETTO\b|RETRIBUZIONE\s+NETTA|IMPORTO\s+NETTO|PAGA\s+BASE|CONTINGENZA|SUPERMINIMO|ELEMENTI\s+RETRIBUTIVI|VOCI\s+VARIABILI|RIFERIMENTO|CODICE\s+(?:FISCALE|CNEL)|COGNOME\s+E\s+NOME/i.test(description)) continue;
 
     let code = '';
     const codeMatch = description.replace(/^(?:\*\s*)+/, '').match(/^([A-Z0-9][A-Z0-9./_-]{0,11})\s+(.+)$/i);
@@ -1587,7 +1616,8 @@ function parseFreeText(text) {
     }
     description = description.replace(/^[^A-Za-zÀ-ù]{1,4}/, '').replace(/\s*(?:ORE?|GG\.?|GIORNI?|RATEI?|%)\s*$/i, '').trim();
     if (description.length < 3) continue;
-    const isDeduction = /IRPEF|CONTRIBUT|TRATTENUT|RITENUT|ADDIZIONALE|SINDAC|CESSION|PIGNOR|IVS|FIS\b|INPS/i.test(description);
+    const isCredit = /\b(?:A\s+CREDITO|CREDITO|RIMBORSO|RESTITUZIONE)\b/i.test(description);
+    const isDeduction = !isCredit && /IRPEF|CONTRIBUT|TRATTENUT|RITENUT|ADDIZIONALE|SINDAC|CESSION|PIGNOR|IVS|FIS\b|INPS/i.test(description);
     const voice = { codice: code, descrizione: description.slice(0, 100), base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null };
     if (numbers.length === 1) {
       if (isDeduction) voice.trattenuta = numbers[0];
