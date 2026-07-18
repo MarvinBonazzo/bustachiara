@@ -239,6 +239,7 @@ function controlloUtileVoce(v, spiegazione = spiegaVoce(v)) {
 /* ---------- navigazione ---------- */
 let currentDetailId = null;
 let draft = null; // { record, warnings } in verifica
+const SourcePreviewCache = new Map(); // anteprime solo in RAM: mai nel localStorage
 function showView(name) {
   $$('.view').forEach(v => v.classList.remove('active'));
   const el = $('#view-' + name); if (el) el.classList.add('active');
@@ -353,21 +354,21 @@ async function handleFile(file) {
         record.meta.fileName = file.name;
         if (weakPages.length) warnings.unshift(`OCR selettivo applicato a ${weakPages.length} pagina/e con testo digitale insufficiente.`);
         importStatus('Fatto', 1);
-        startVerifica(record, warnings, previews);
+        proponiDopoImport(record, warnings, previews);
       } else {
         importStatus('PDF senza testo (scansione): avvio la lettura ottica locale…', 0.15);
         const canvases = [];
         for (let p = 1; p <= pdf.numPages; p++) canvases.push(await renderPage(await pdf.getPage(p), 2.6));
         const { record, warnings, previewPages } = await parseDaOcr(canvases, (m, f) => importStatus('Lettura ottica: ' + m, 0.15 + 0.8 * (f || 0)));
         record.meta.fileName = file.name;
-        startVerifica(record, warnings, previewPages);
+        proponiDopoImport(record, warnings, previewPages);
       }
     } else if (/^image\//.test(file.type)) {
       importStatus('Preparo l’immagine…', 0.1);
       const canvas = await imageToCanvas(file);
       const { record, warnings, previewPages } = await parseDaOcr([canvas], (m, f) => importStatus('Lettura ottica: ' + m, 0.1 + 0.85 * (f || 0)));
       record.meta.fileName = file.name;
-      startVerifica(record, warnings, previewPages);
+      proponiDopoImport(record, warnings, previewPages);
     } else {
       toast('Formato non supportato: usa PDF o immagine.');
     }
@@ -927,9 +928,16 @@ async function parseDaOcr(canvases, status) {
    ============================================================ */
 function emptyRecord() {
   const now = new Date();
-  return { documento: { tipo: 'ordinario' }, periodo: { mese: now.getMonth() + 1, anno: now.getFullYear() }, azienda: {}, dipendente: {}, ccnl: {}, elementi: { altri: [] }, orario: {}, voci: [], tfr: {}, progressivi: {}, ratei: {}, totali: {}, meta: { fonte: 'manuale', software: 'inserimento manuale', settore: 'privato-lul', fields: {}, candidates: {}, reconciliation: {}, pageSizes: [] } };
+  return { documento: { tipo: 'ordinario' }, periodo: { mese: now.getMonth() + 1, anno: now.getFullYear() }, azienda: {}, dipendente: {}, ccnl: {}, elementi: { altri: [] }, orario: {}, voci: [], presenze: { righe: [] }, tfr: {}, progressivi: {}, ratei: {}, totali: {}, meta: { fonte: 'manuale', software: 'inserimento manuale', settore: 'privato-lul', fields: {}, candidates: {}, reconciliation: {}, pageSizes: [] } };
 }
-function startVerifica(record, warnings, previewPages = []) {
+
+function rememberSourcePreview(record, previewPages) {
+  if (!record || !record.id || !previewPages || !previewPages.length) return;
+  SourcePreviewCache.set(record.id, previewPages);
+  while (SourcePreviewCache.size > 3) SourcePreviewCache.delete(SourcePreviewCache.keys().next().value);
+}
+
+function prepareRecord(record) {
   if (!record.id) record.id = uid();
   applicaProfiloLayout(record);
   applicaAliasLocali(record);
@@ -938,7 +946,29 @@ function startVerifica(record, warnings, previewPages = []) {
   record.meta.qualita = Parser.valutaQualita(record);
   const hit = Parser.trovaCcnl(record, CCNL_DB, Store.data.customCcnl.map(reviveCustom));
   if (hit && !record.ccnlId) record.ccnlId = hit.id;
-  draft = { record, warnings: warnings || [], previewPages: previewPages || [], activeSource: null };
+  return record;
+}
+
+function proponiDopoImport(record, warnings, previewPages = []) {
+  prepareRecord(record);
+  rememberSourcePreview(record, previewPages);
+  const period = record.periodo ? periodoLabel(record.periodo) : 'Periodo da controllare';
+  const net = record.totali && record.totali.netto != null ? `${fmtEur(record.totali.netto)} € netti` : 'Netto da controllare';
+  openInfo('Documento letto', `<p><b>${esc(period)}</b> · ${esc(net)}</p><p>Scegli se andare subito al Riassunto oppure controllare prima i dati letti.</p><div class="import-choice"><button type="button" class="primary" id="import-save-analyze">Salva e analizza</button><button type="button" class="ghost" id="import-check-data">Controlla i dati</button></div><p class="muted small">Il documento resta sul dispositivo. L’anteprima originale rimane soltanto nella memoria di questa sessione.</p>`);
+  $('#import-save-analyze').addEventListener('click', () => {
+    if (!salvaRecord(record, { confirmed: false, previewPages })) return;
+    closeInfo(); completaSalvataggio(record);
+  });
+  $('#import-check-data').addEventListener('click', () => {
+    closeInfo(); startVerifica(record, warnings, previewPages);
+  });
+}
+
+function startVerifica(record, warnings, previewPages = []) {
+  prepareRecord(record);
+  const availablePreviews = previewPages && previewPages.length ? previewPages : (SourcePreviewCache.get(record.id) || []);
+  rememberSourcePreview(record, availablePreviews);
+  draft = { record, warnings: warnings || [], previewPages: availablePreviews, activeSource: null };
   renderVerifica();
   showView('verifica');
 }
@@ -1126,7 +1156,7 @@ function renderVociEdit() {
     <td data-label="Descrizione"><div class="voice-description-stack"><div class="voice-description-edit"><input class="desc" data-vk="descrizione" aria-label="Descrizione voce" value="${esc(v.descrizione || '')}">${v.meta && v.meta.visual && draft.previewPages[v.meta.visual.page] ? `<button type="button" class="source-btn" data-source-voice="${i}" aria-label="Mostra la voce nel documento">⌖</button>` : ''}</div>${v.rifTesto ? `<div class="voice-reference">Riferimento: ${esc(v.rifTesto)}</div>` : ''}<div class="voice-check" data-voice-check="${i}" hidden></div></div></td>
     <td data-label="Tipo"><select data-vk="categoriaManuale" aria-label="Conferma il tipo di voce"><option value="">Automatico</option><option value="competenza" ${v.categoriaManuale === 'competenza' ? 'selected' : ''}>Competenza</option><option value="trattenuta" ${v.categoriaManuale === 'trattenuta' ? 'selected' : ''}>Trattenuta</option><option value="dato" ${v.categoriaManuale === 'dato' ? 'selected' : ''}>Dato</option></select></td>
     <td class="num" data-label="Base"><input data-vk="base" aria-label="Base" value="${v.base == null ? '' : esc(fmtEur(v.base, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
-    <td class="num" data-label="Quantità"><input data-vk="rifQta" aria-label="Quantità" value="${v.rifQta == null ? '' : esc(fmtEur(v.rifQta, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
+    <td class="num" data-label="Riferimento"><input data-vk="rifQta" aria-label="Riferimento o quantità" value="${v.rifQta == null ? '' : esc(fmtEur(v.rifQta, 5).replace(/(,\d*?)0+$/, '$1').replace(/,$/, ''))}"></td>
     <td data-label="Unità"><input class="code" data-vk="rifUnita" aria-label="Unità" value="${esc(v.rifUnita || '')}"></td>
     <td class="num" data-label="Trattenuta"><input data-vk="trattenuta" aria-label="Trattenuta" value="${v.trattenuta == null ? '' : esc(fmtEur(v.trattenuta))}"></td>
     <td class="num" data-label="Competenza"><input data-vk="competenza" aria-label="Competenza" value="${v.competenza == null ? '' : esc(fmtEur(v.competenza))}"></td>
@@ -1224,26 +1254,43 @@ function liveQuadratura() {
   $('#live-quadratura').innerHTML = html;
   updateVoiceCheckBadges(consistency);
 }
-function salvaDraft() {
-  const r = draft.record;
+function salvaRecord(r, options = {}) {
   if (!r.periodo || !r.periodo.anno || !r.periodo.mese) { toast('Indica mese e anno del cedolino.'); return; }
   r.periodo.label = periodoLabel(r.periodo);
   const dup = Store.data.records.find(x => x.id !== r.id && recordIdentityKey(x) === recordIdentityKey(r));
-  if (dup && !confirm(`Esiste già un cedolino ${tipoCedolinoLabel(r).toLowerCase()} di ${r.azienda.nome || 'questa azienda'} per ${r.periodo.label}: lo sostituisco?`)) return;
-  if (dup) Store.data.records = Store.data.records.filter(x => x.id !== dup.id);
+  if (dup && !confirm(`Esiste già un cedolino ${tipoCedolinoLabel(r).toLowerCase()} di ${r.azienda.nome || 'questa azienda'} per ${r.periodo.label}: lo sostituisco?`)) return false;
+  if (dup) {
+    Store.data.records = Store.data.records.filter(x => x.id !== dup.id);
+    SourcePreviewCache.delete(dup.id);
+  }
   r.derivati = Parser.derivaIndice(r);
-  imparaCorrezioni(r);
-  imparaProfiloLayout(r);
+  if (options.confirmed) {
+    imparaCorrezioni(r);
+    imparaProfiloLayout(r);
+  }
+  rememberSourcePreview(r, options.previewPages || []);
   r.meta.importedAt = new Date().toISOString();
   const i = Store.data.records.findIndex(x => x.id === r.id);
   if (i >= 0) Store.data.records[i] = r; else Store.data.records.push(r);
   Store.save();
+  return true;
+}
+
+function completaSalvataggio(r) {
   draft = null;
   currentDetailId = r.id;
   renderImporta();
+  renderRiassunto(r.id);
   renderDettaglio(r.id);
-  showView('dettaglio');
+  showView('riassunto');
   toast('Busta salvata nella cronologia (solo su questo dispositivo).');
+}
+
+function salvaDraft() {
+  const r = draft.record;
+  const previewPages = draft.previewPages || [];
+  if (!salvaRecord(r, { confirmed: true, previewPages })) return;
+  completaSalvataggio(r);
 }
 
 /* ============================================================
@@ -1317,7 +1364,7 @@ function vociTableHTML(r) {
             ${original ? `<p class="voice-original">Sul cedolino: ${esc(original)}</p>` : ''}
             <p class="voice-meaning">${esc(spiegazioneBreveVoce(v, s))}</p>
             ${v.meta && v.meta.nonMultiplicative && v.rifTesto ? `<p class="voice-reference">Riferimento: ${esc(v.rifTesto)}</p>` : ''}
-            ${usefulCheck ? `<p class="voice-ledger-check">${esc(usefulCheck)}</p>` : ''}
+            ${usefulCheck ? `<button type="button" class="voice-ledger-check" data-edit-voice="${i}">${esc(usefulCheck)} <span>Correggi</span></button>` : ''}
           </div>
           <strong class="voice-ledger-amount">${esc(amountLabel(v, group.cat))}</strong>
           <button class="ibtn" data-vocei="${i}" title="Approfondisci" aria-label="Approfondisci ${esc(s.nome)}">i</button>
@@ -1339,6 +1386,16 @@ function importoVoci(record, regex, used = new Set()) {
   return { totale, quantita };
 }
 
+function totalePresenze(record, tipi) {
+  const rows = record.presenze && Array.isArray(record.presenze.righe) ? record.presenze.righe : [];
+  const selected = rows.filter(row => tipi.includes(row.tipo) && Number.isFinite(Number(row.totale)));
+  return {
+    totale: selected.reduce((sum, row) => sum + Number(row.totale), 0),
+    unita: (selected[0] && selected[0].unita) || 'ORE',
+    righe: selected,
+  };
+}
+
 function commentiSemplici(record) {
   const comments = [], used = new Set();
   const addExtra = (title, result, sentence) => {
@@ -1355,6 +1412,11 @@ function commentiSemplici(record) {
     `Il lavoro notturno ha aggiunto ${fmtEur(result.totale)} € lordi. Senza queste ore, il lordo sarebbe stato più basso dello stesso importo.`);
   addExtra('Ore in più', importoVoci(record, /straordinar|supplementar|ore\s+extra/i, used), result =>
     `Straordinari e ore supplementari hanno aggiunto ${fmtEur(result.totale)} € lordi${result.quantita ? ` per ${fmtEur(result.quantita, 1)} ore indicate` : ''}.`);
+  const extraAttendance = totalePresenze(record, ['ore-extra']);
+  if (extraAttendance.totale) comments.push({
+    title: 'Ore indicate nel calendario',
+    text: `La tabella presenze riporta ${fmtEur(extraAttendance.totale)} ${/ORE/i.test(extraAttendance.unita) ? 'ore' : 'giorni'} tra straordinari, lavoro supplementare o banca ore. È tempo registrato, non un importo in euro: il pagamento va verificato nelle competenze.`,
+  });
   addExtra('Premi', importoVoci(record, /premio|bonus|incentiv|provvig|una\s*tantum/i, used), result =>
     `Premi e incentivi hanno aggiunto ${fmtEur(result.totale)} € lordi questo mese.`);
   addExtra('Mensilità aggiuntive', importoVoci(record, /13.?ma|tredicesim|14.?ma|quattordicesim|gratifica\s+natalizia/i, used), result =>
@@ -1364,8 +1426,19 @@ function commentiSemplici(record) {
     `Rimborsi e trasferte riconosciuti nel cedolino ammontano a ${fmtEur(result.totale)} €. Possono avere regole fiscali diverse dallo stipendio ordinario.`);
   addExtra('Conguagli e crediti', importoVoci(record, /conguaglio.*credito|credito.*(?:irpef|730)|rimborso.*730|trattamento\s+integrativo/i, used), result =>
     `Crediti fiscali o conguagli a tuo favore hanno aggiunto ${fmtEur(result.totale)} € questo mese.`);
+  const absenceAttendance = totalePresenze(record, ['assenza', 'assenza-tutelata']);
   const paidAbsence = importoVoci(record, /malatt|maternit|paternit|infortun|ferie\s+godut|permess|rol\s+godut|conged/i, used);
-  if (paidAbsence.totale) comments.push({ title: 'Assenze pagate', text: `Nel cedolino compaiono ${fmtEur(paidAbsence.totale)} € legati a ferie, permessi o altre assenze tutelate. Non sono necessariamente soldi in più: spesso sostituiscono la paga ordinaria delle ore non lavorate.` });
+  const absenceVoice = (record.voci || []).find(voice => /malatt|maternit|paternit|infortun|ferie\s+godut|permess|rol\s+godut|conged/i.test(voice.descrizione || '')
+    && Number.isFinite(Number(voice.rifQta)) && /^(?:ORE|ORA|H|GG|GIORNI)$/i.test(voice.rifUnita || ''));
+  if (absenceAttendance.totale) comments.push({
+    title: 'Assenze pagate',
+    text: `La tabella presenze indica ${fmtEur(absenceAttendance.totale)} ${/ORE/i.test(absenceAttendance.unita) ? 'ore' : 'giorni'} di ferie, permessi o altre assenze. È tempo registrato, non denaro.`,
+  });
+  else if (absenceVoice) comments.push({
+    title: 'Assenze pagate',
+    text: `Il cedolino indica ${fmtEur(absenceVoice.rifQta)} ${/^(?:ORE|ORA|H)$/i.test(absenceVoice.rifUnita) ? 'ore' : 'giorni'} per ${String(absenceVoice.descrizione || 'assenze').toLowerCase()}. È una quantità di tempo, non un importo in euro.`,
+  });
+  else if (paidAbsence.totale) comments.push({ title: 'Assenze pagate', text: `Nel cedolino risultano ${fmtEur(paidAbsence.totale)} € collegati ad assenze retribuite. Possono sostituire la paga ordinaria delle ore non lavorate.` });
 
   const totals = record.totali || {}, derivati = record.derivati || {};
   if (totals.competenze > 0 && totals.trattenute != null) {
@@ -1401,6 +1474,17 @@ function commentiSemplici(record) {
 
 function commentiSempliciHTML(record) {
   return `<div class="simple-comments">${commentiSemplici(record).map((comment, index) => `<div class="simple-comment ${index > 3 ? 'neutral' : ''}"><b>${esc(comment.title)}</b><p>${esc(comment.text)}</p></div>`).join('')}</div>`;
+}
+
+function presenzeHTML(record) {
+  const rows = record.presenze && Array.isArray(record.presenze.righe)
+    ? record.presenze.righe.filter(row => Number.isFinite(Number(row.totale))) : [];
+  if (!rows.length) return '';
+  return `<div class="card attendance-card"><h2>Presenze del mese</h2><div class="attendance-list">${rows.map(row => {
+    const unit = /ORE/i.test(row.unita || '') ? 'ore' : 'giorni';
+    const days = Array.isArray(row.giorni) ? new Set(row.giorni.map(item => item.giorno)).size : 0;
+    return `<div class="attendance-row"><div><b>${esc(row.descrizione)}</b>${days ? `<span>${days} ${days === 1 ? 'giorno compilato' : 'giorni compilati'}</span>` : ''}</div><strong>${fmtEur(row.totale)} ${unit}</strong></div>`;
+  }).join('')}</div><p class="muted small">Questi sono totali di tempo letti dalla tabella presenze, non importi in euro.</p></div>`;
 }
 
 function testoControlloSemplice(finding) {
@@ -1464,20 +1548,21 @@ function renderRiassunto(id) {
     ${recSorted().length > 1 ? `<label class="field" style="max-width:220px;margin-bottom:8px">Mese archiviato<select id="sel-riassunto">${recSorted().map(item => `<option value="${esc(item.id)}" ${item.id === r.id ? 'selected' : ''}>${esc(periodoLabel(item.periodo))} · ${esc(tipoCedolinoLabel(item))}</option>`).join('')}</select></label>` : ''}
     <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
     <div class="card"><h2>Dal lordo al netto</h2><p>Nel cedolino risultano <b>${fmtEur(r.totali.competenze)} €</b> di competenze, <b>${fmtEur(r.totali.trattenute)} €</b> di trattenute e <b>${fmtEur(r.totali.netto)} €</b> netti.</p>${flussoStipendioHTML(r)}</div>
-    <div class="card"><h2>In parole semplici</h2>${commentiSempliciHTML(r)}</div>`;
+    <div class="card"><h2>Riassunto dei dati</h2>${commentiSempliciHTML(r)}</div>`;
   const select = $('#sel-riassunto'); if (select) select.addEventListener('change', () => renderRiassunto(select.value));
 }
 
 function renderDettaglioCompleto(el, r, ccnl, findings) {
   el.innerHTML = `
   ${selettorePeriodo(r)}
-  <div class="card detail-overview"><div class="detail-overview-title"><p>${esc(periodoLabel(r.periodo))}</p><h2>Dettaglio del cedolino</h2></div><div class="detail-metrics">
+  <div class="card detail-overview"><div class="detail-overview-title"><p>${esc(periodoLabel(r.periodo))}</p><h2>Cedolino dettagliato</h2></div><div class="detail-metrics">
     <div><span>Competenze</span><b>${fmtEur(r.totali.competenze)} €</b></div>
     <div><span>Trattenute</span><b>${fmtEur(r.totali.trattenute)} €</b></div>
     <div class="net"><span>Netto</span><b>${fmtEur(r.totali.netto)} €</b></div>
   </div></div>
   ${controlliSempliciHTML(findings)}
-  <div class="card voice-ledger-card"><h2>Tutte le voci</h2><p class="muted">Gli importi sono raggruppati per effetto sul cedolino. Ogni riga ha una spiegazione breve; toccala per approfondire.</p>${vociTableHTML(r)}</div>
+  ${presenzeHTML(r)}
+  <div class="card voice-ledger-card"><h2>Tutte le voci</h2><p class="muted">Tocca la voce se vuoi approfondire.</p>${vociTableHTML(r)}</div>
   <div class="card"><h2>Dati utili</h2><div class="kv">
     <div><b>Azienda</b>${esc(r.azienda.nome || '—')}</div>
     <div><b>Contratto</b>${esc(ccnl ? ccnl.nome : (r.ccnl.descrizione || 'Non identificato'))}${r.ccnl.cnel ? ` · CNEL ${esc(r.ccnl.cnel)}` : ''}</div>
@@ -1488,12 +1573,36 @@ function renderDettaglioCompleto(el, r, ccnl, findings) {
   bindDettaglioCommon(el, r);
 }
 
+function openRecordEditor(record, voiceIndex = null) {
+  const copy = JSON.parse(JSON.stringify(record));
+  const previews = SourcePreviewCache.get(record.id) || [];
+  startVerifica(copy, ['Stai modificando una busta già salvata.'], previews);
+  if (voiceIndex == null) return;
+  requestAnimationFrame(() => {
+    const row = $(`#voci-edit tr[data-i="${voiceIndex}"]`, $('#view-verifica'));
+    if (!row) return;
+    row.classList.add('target-edit');
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const input = $('[data-vk="base"]', row) || $('input', row);
+    if (input) input.focus({ preventScroll: true });
+    const voice = draft.record.voci[voiceIndex];
+    if (voice && voice.meta && voice.meta.visual && previews.length) showSourceEvidence(voice.meta.visual);
+  });
+}
+
 function bindDettaglioCommon(el, r) {
-  const be = $('#btn-edit'); if (be) be.addEventListener('click', () => startVerifica(JSON.parse(JSON.stringify(r)), ['Stai modificando una busta già salvata.']));
+  const be = $('#btn-edit'); if (be) be.addEventListener('click', () => openRecordEditor(r));
+  el.addEventListener('click', event => {
+    const edit = event.target.closest('[data-edit-voice]');
+    if (!edit) return;
+    event.preventDefault(); event.stopPropagation();
+    openRecordEditor(r, +edit.dataset.editVoice);
+  });
   const bp = $('#btn-print'); if (bp) bp.addEventListener('click', () => window.print());
   const bd = $('#btn-del'); if (bd) bd.addEventListener('click', () => {
     if (!confirm('Eliminare questa busta dalla cronologia locale?')) return;
     Store.data.records = Store.data.records.filter(x => x.id !== r.id); Store.save();
+    SourcePreviewCache.delete(r.id);
     renderImporta();
     showView('importa');
     toast('Busta eliminata.');

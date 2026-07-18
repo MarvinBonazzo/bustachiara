@@ -84,6 +84,8 @@ button:disabled { opacity: .5; cursor: default; }
 #popover-close { border: 0; background: var(--chip); color: var(--muted); width: 30px; height: 30px; border-radius: 50%; font-size: 18px; cursor: pointer; line-height: 1; flex: none; }
 #popover-body { font-size: 15px; }
 #popover-body p { margin: 8px 0; }
+.import-choice { display: grid; gap: 9px; margin: 18px 0 10px; }
+.import-choice button { width: 100%; padding-block: 12px; }
 
 /* barra "dove vanno i tuoi soldi" */
 .soldi-bar { display: flex; height: 26px; border-radius: 999px; overflow: hidden; margin: 10px 0 8px; }
@@ -182,6 +184,28 @@ table.voci td.num, table.voci th.num { text-align: right; font-variant-numeric: 
 table.voci input { width: 90px; font: inherit; font-size: 13px; text-align: right; background: var(--bg); color: var(--ink); border: 0; border-radius: 8px; padding: 5px 7px; }
 table.voci input.desc { width: 200px; text-align: left; }
 table.voci input.code { width: 64px; text-align: left; }
+#voci-edit { display: block; width: 100%; min-width: 0; }
+#voci-edit thead { display: none; }
+#voci-edit tbody { display: grid; gap: 11px; width: 100%; }
+#voci-edit tr { position: relative; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); grid-template-areas: "code code description description description description description type type type" "base base reference reference unit unit deduction deduction competence competence"; gap: 9px; padding: 12px; border: 1px solid var(--sep); border-radius: 14px; background: #fbfcfb; transition: border-color .2s, box-shadow .2s; }
+#voci-edit tr.target-edit { border-color: var(--warn); box-shadow: 0 0 0 3px rgba(176,119,8,.16); }
+#voci-edit td { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding: 0; border: 0; text-align: left; white-space: normal; }
+#voci-edit td::before { content: attr(data-label); color: var(--muted); font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+#voci-edit td[data-label="Codice"] { grid-area: code; }
+#voci-edit td[data-label="Descrizione"] { grid-area: description; }
+#voci-edit td[data-label="Tipo"] { grid-area: type; padding-right: 32px; }
+#voci-edit td[data-label="Base"] { grid-area: base; }
+#voci-edit td[data-label="Riferimento"] { grid-area: reference; }
+#voci-edit td[data-label="Unità"] { grid-area: unit; }
+#voci-edit td[data-label="Trattenuta"] { grid-area: deduction; padding: 7px; border-radius: 9px; background: var(--alert-bg); }
+#voci-edit td[data-label="Competenza"] { grid-area: competence; padding: 7px; border-radius: 9px; background: var(--ok-bg); }
+#voci-edit td.voice-actions { position: absolute; right: 9px; top: 9px; }
+#voci-edit td.voice-actions::before { display: none; }
+#voci-edit input, #voci-edit input.code, #voci-edit input.desc, #voci-edit select { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid var(--sep); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: 13px; text-align: left; }
+#voci-edit td[data-label="Trattenuta"] input { border-color: rgba(208,52,44,.18); color: #a42a25; font-weight: 750; }
+#voci-edit td[data-label="Competenza"] input { border-color: rgba(8,121,86,.18); color: var(--brand-2); font-weight: 750; }
+#voci-edit .voice-description-stack { width: 100%; min-width: 0; }
+#voci-edit .voice-description-edit { width: 100%; }
 .badge { display: inline-block; font-size: 10.5px; font-weight: 600; border-radius: 6px; padding: 2px 7px; margin-left: 6px; vertical-align: middle; }
 .badge.comp { background: var(--ok-bg); color: var(--ok); }
 .badge.tratt { background: var(--alert-bg); color: var(--alert); }
@@ -243,6 +267,13 @@ svg.chart { width: 100%; height: 150px; display: block; }
 .simple-comment b { display: block; margin-bottom: 2px; }
 .simple-comment p { margin: 0; color: var(--ink); }
 .simple-comment.neutral { border-left-color: #8b9692; background: #f2f5f3; }
+.attendance-list { border-top: 1px solid var(--sep); }
+.attendance-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--sep); }
+.attendance-row div { min-width: 0; }
+.attendance-row b, .attendance-row span { display: block; }
+.attendance-row span { color: var(--muted); font-size: 11.5px; }
+.attendance-row strong { flex: none; color: var(--brand-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.attendance-card > p:last-child { margin-bottom: 0; }
 .simple-alerts { display: grid; gap: 8px; }
 .simple-alert { padding: 12px 14px; background: var(--warn-bg); border-left: 4px solid var(--warn); }
 .simple-alert.alert { background: var(--alert-bg); border-left-color: var(--alert); }
@@ -277,7 +308,9 @@ svg.chart { width: 100%; height: 150px; display: block; }
 .voice-ledger-copy .voice-meaning { color: var(--ink); font-size: 13px; }
 .voice-reference { color: var(--muted); font-size: 11.5px; }
 .voice-ledger-copy .voice-reference { padding-top: 2px; font-variant-numeric: tabular-nums; }
-.voice-ledger-copy .voice-ledger-check { color: #825300; font-size: 12px; font-weight: 650; }
+.voice-ledger-copy .voice-ledger-check { display: block; width: 100%; margin-top: 7px; padding: 8px 10px; border: 1px solid rgba(176,119,8,.24); border-radius: 9px; color: #825300; background: var(--warn-bg); font: inherit; font-size: 12px; font-weight: 650; text-align: left; cursor: pointer; }
+.voice-ledger-copy .voice-ledger-check:hover { border-color: var(--warn); }
+.voice-ledger-copy .voice-ledger-check span { float: right; color: var(--brand); font-weight: 800; }
 .voice-ledger-amount { color: var(--brand); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .voice-ledger-row.trattenuta .voice-ledger-amount { color: var(--alert); }
 .voice-ledger-row.dato .voice-ledger-amount { color: var(--muted); font-size: 11.5px; }
@@ -363,11 +396,12 @@ footer .license { margin-top: 10px; font-weight: 600; }
   #view-verifica table.voci { display: block; min-width: 0; }
   #view-verifica table.voci thead { display: none; }
   #view-verifica table.voci tbody { display: grid; gap: 10px; }
-  #view-verifica table.voci tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding: 12px; border: 1px solid var(--sep); border-radius: 14px; background: #fbfcfb; }
+  #view-verifica table.voci tr { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "code type" "description description" "base reference" "unit unit" "deduction competence"; gap: 8px 10px; padding: 12px; border: 1px solid var(--sep); border-radius: 14px; background: #fbfcfb; }
   #view-verifica table.voci td { display: flex; flex-direction: column; gap: 3px; padding: 0; border: 0; text-align: left; min-width: 0; }
   #view-verifica table.voci td::before { content: attr(data-label); color: var(--muted); font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   #view-verifica table.voci td[data-label="Descrizione"] { grid-column: 1 / -1; }
   #view-verifica table.voci td.voice-actions { align-items: flex-end; justify-content: flex-end; }
+  #voci-edit td.voice-actions { position: absolute; right: 8px; top: 8px; }
   #view-verifica table.voci input, #view-verifica table.voci input.code, #view-verifica table.voci input.desc, #view-verifica table.voci select { box-sizing: border-box; width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--sep); background: #fff; text-align: left; }
   #view-verifica .voice-description-edit { width: 100%; }
   #view-verifica .voice-description-stack { min-width: 0; width: 100%; }
