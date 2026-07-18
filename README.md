@@ -14,6 +14,30 @@ di BustaChiara a cui inviare il documento.
 > questo repository quando l'applicazione avrà raggiunto una stabilità ottimale. Fino ad
 > allora, su Android è possibile installare e usare la PWA seguendo le istruzioni qui sotto.
 
+## Come funziona
+
+Gli screenshot seguenti usano esclusivamente nomi e importi inventati.
+
+### 1. Carica la busta paga
+
+Trascina un PDF, una scansione o una foto nella Home. Il documento viene elaborato sul
+dispositivo.
+
+![Home di BustaChiara con il riquadro per caricare una busta paga](docs/screenshots/01-home.jpg)
+
+### 2. Leggi il riassunto
+
+Il Riassunto mostra subito netto, trattenute, grafico e ciò che ha cambiato il mese.
+
+![Riassunto di una busta paga dimostrativa con netto e grafico](docs/screenshots/02-riassunto.jpg)
+
+### 3. Approfondisci le singole voci
+
+In Dettagliato competenze e trattenute sono separate e ogni voce viene spiegata in modo
+semplice.
+
+![Voci di competenza e trattenuta spiegate nella schermata Dettagliato](docs/screenshots/03-dettagliato.jpg)
+
 > **Importante:** un'intelligenza artificiale può sbagliare e anche BustaChiara può
 > sbagliare. Layout nuovi, scansioni rovinate e causali aziendali possono essere letti male.
 > Prima di salvare, confronta sempre i dati con il documento originale. L'app aiuta a capire:

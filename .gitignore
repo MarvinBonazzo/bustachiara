@@ -38,6 +38,7 @@ __pycache__/
 *.tiff
 *.png
 !/pwa/icons/*.png
+!/docs/screenshots/*.jpg
 bustachiara-backup-*.json
 bustachiara-fixtures-anonime-*.json
 /private/
