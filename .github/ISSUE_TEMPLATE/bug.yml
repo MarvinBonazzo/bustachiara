@@ -1,0 +1,53 @@
+name: Errore dell'app
+description: Segnala un problema senza condividere dati personali.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Non allegare cedolini, screenshot o export reali.** GitHub è pubblico.
+        Usa soltanto dati completamente inventati.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Cosa succede?
+      description: Spiega il problema e cosa ti aspettavi.
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Dispositivo
+      options:
+        - iPhone o iPad
+        - Android
+        - Windows
+        - macOS
+        - Linux
+        - Altro
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser e versione
+      placeholder: "Esempio: Safari 19"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passaggi per riprodurlo
+      description: Non inserire nomi, codici fiscali, importi o testi copiati da documenti reali.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Controllo privacy
+      options:
+        - label: Confermo di non aver inserito né allegato dati o documenti reali.
+          required: true
+

@@ -455,6 +455,57 @@ function rilevaTipoCedolino(text) {
   return 'ordinario';
 }
 
+/* Un documento fiscale può contenere le stesse parole e gli stessi importi di
+   un cedolino. Il parser rifiuta soltanto famiglie fuori ambito riconosciute con
+   segnali espliciti; un documento semplicemente incerto resta invece verificabile. */
+function classificaDocumento(text) {
+  const p = plain(text);
+  const positiveSignals = [
+    /LIBRO UNICO DEL LAVORO/,
+    /(?:BUSTA|CEDOLINO|PROSPETTO)\s+(?:PAGA|RETRIBUTIV)/,
+    /\bNOIPA\b|CEDOLINO UNICO|RATA DI RIFERIMENTO/,
+    /VOCI VARIABILI|ELEMENTI (?:DELLA )?RETRIBUZIONE/,
+    /TOT(?:ALE)?\.?\s+COMPETENZE[\s\S]{0,800}TOT(?:ALE)?\.?\s+(?:TRATTENUTE|RITENUTE)[\s\S]{0,800}(?:NETTO|IMPORTO NETTO)/,
+  ].filter(regex => regex.test(p)).length;
+  const strongPayroll = positiveSignals >= 2;
+
+  const negatives = [
+    { kind: 'pensione', label: 'cedolino pensione', re: /CEDOLINO\s+(?:DI\s+)?PENSIONE|PROSPETTO\s+PENSIONE|PENSIONE\s+(?:INPS|LORDA)/, always: true },
+    { kind: 'cu', label: 'Certificazione Unica (CU)', re: /CERTIFICAZIONE\s+UNICA|MODELLO\s+C\.?U\.?\b/ },
+    { kind: '730', label: 'modello 730', re: /MODELLO\s+730(?:-3)?|730-3\s+.*PROSPETTO\s+DI\s+LIQUIDAZIONE|PROSPETTO\s+DI\s+LIQUIDAZIONE.*730/ },
+    { kind: 'f24', label: 'modello F24', re: /MODELLO\s+F24|DELEGA\s+IRREVOCABILE.*F24/ },
+    { kind: 'contratto', label: 'contratto individuale di lavoro', re: /CONTRATTO\s+INDIVIDUALE\s+DI\s+LAVORO|LETTERA\s+DI\s+ASSUNZIONE/ },
+    { kind: 'presenze', label: 'prospetto presenze', re: /PROSPETTO\s+PRESENZE|CARTELLINO\s+(?:DELLE\s+)?PRESENZE|FOGLIO\s+PRESENZE/ },
+  ];
+  const negative = negatives.find(item => item.re.test(p) && (item.always || !strongPayroll));
+  if (negative) return {
+    inScope: false,
+    kind: negative.kind,
+    label: negative.label,
+    confidence: .99,
+    positiveSignals,
+  };
+  if (positiveSignals) return {
+    inScope: true,
+    kind: 'cedolino-lavoro',
+    label: 'cedolino di lavoro',
+    confidence: Math.min(.99, .7 + positiveSignals * .08),
+    positiveSignals,
+  };
+  return { inScope: null, kind: 'incerto', label: 'documento non identificato', confidence: .35, positiveSignals: 0 };
+}
+
+function rejectOutOfScope(rec, classification) {
+  rec.documento.tipo = 'non-cedolino';
+  rec.meta.documentClassification = classification;
+  ripulisciRecord(rec);
+  rec.meta.qualita = { score: 0, livello: 'fuori-ambito', dettagli: [`Riconosciuto come ${classification.label}`] };
+  return {
+    record: rec,
+    warnings: [`Questo file sembra un ${classification.label}, non una busta paga da lavoro dipendente. Non è stato interpretato né salvato.`],
+  };
+}
+
 function rilevaSoftware(text) {
   const p = plain(text);
   if (/JET\s*HR|MESE DI RETRIBUZIONE/.test(p) && /TI RIMANGONO|CAUSALE PRESENZE/.test(p)) return 'Jet HR';
@@ -629,16 +680,31 @@ function extractElements(rec, allLines) {
   }
 }
 
-function findTableHeader(lines) {
+function isTableHeaderText(value) {
+  const text = normalizzaTesto(value);
+  if (/VOCI\s+VARIABILI(?:\s+DEL\s+MESE)?/i.test(text)) return true;
+  if (/\bVOCE\b.*\bDESCRIZIONE\b/i.test(text) && /COMPETENZE|IMPORTO|TRATTENUTE|RITENUTE/i.test(text)) return true;
+  if (/\bCODICE\b.*\bDESCRIZIONE\b/i.test(text) && /COMPETENZE|IMPORTO|TRATTENUTE|RITENUTE/i.test(text)) return true;
+  if (/(?:^|\s)COD\.?(?:\s|$).*\bDESCRIZIONE\b/i.test(text) && /COMPETENZE|TRATTENUTE|RITENUTE/i.test(text)) return true;
+  if (/COMPETENZE\s+FISSE|COMPETENZE\s+ACCESSORIE/i.test(text) && /TRATTENUTE|RITENUTE/i.test(text)) return true;
+  if (/DESCRIZIONE/i.test(text) && /Q(?:UA)?NTIT[AÀ]|ORE|GIORNI/i.test(text) && /IMPORTO|TOTALE/i.test(text)) return true;
+  // Cedolini domestici: Tempo e Figurativo sono riferimenti, non importi da
+  // sommare. La coppia Competenze/Trattenute identifica comunque la tabella.
+  if (/\bTEMPO\b/i.test(text) && /\bBASE\b/i.test(text) && /FIGURATIV/i.test(text)
+    && /COMPETENZE/i.test(text) && /TRATTENUTE/i.test(text)) return true;
+  return false;
+}
+
+function findTableHeaders(lines) {
+  const indexes = [];
   for (let i = 0; i < lines.length; i++) {
-    const text = normalizzaTesto(lines[i].text);
-    if (/VOCI\s+VARIABILI(?:\s+DEL\s+MESE)?/i.test(text)) return i;
-    if (/\bVOCE\b.*\bDESCRIZIONE\b/i.test(text) && /COMPETENZE|IMPORTO|TRATTENUTE|RITENUTE/i.test(text)) return i;
-    if (/\bCODICE\b.*\bDESCRIZIONE\b/i.test(text) && /COMPETENZE|IMPORTO|TRATTENUTE|RITENUTE/i.test(text)) return i;
-    if (/COMPETENZE\s+FISSE|COMPETENZE\s+ACCESSORIE/i.test(text) && /TRATTENUTE|RITENUTE/i.test(text)) return i;
-    if (/DESCRIZIONE/i.test(text) && /Q(?:UA)?NTIT[AÀ]|ORE|GIORNI/i.test(text) && /IMPORTO|TOTALE/i.test(text)) return i;
+    if (isTableHeaderText(lines[i].text)) indexes.push(i);
   }
-  return -1;
+  return indexes;
+}
+
+function findTableHeader(lines) {
+  return findTableHeaders(lines)[0] ?? -1;
 }
 
 function tableHeads(lines, headerIndex) {
@@ -647,13 +713,17 @@ function tableHeads(lines, headerIndex) {
     for (const cell of lines[row].cells) {
       const text = normalizzaTesto(cell.str);
       const center = cellCenter(cell);
-      if (/IMPORTO\s*BASE|TARIFFA|VALORE\s*UNITARIO|^BASE$/i.test(text)) heads.base = center;
-      else if (/RIFERIMENTO|QUANTITA|Q\.?TA/i.test(plain(text))) heads.rif = center;
-      else if (/TRATTENUTE|RITENUTE|DEBITI/i.test(text)) heads.tratt = center;
-      else if (/COMPETENZE|ACCREDITI/i.test(text)) heads.comp = center;
-      else if (/UNITA(?:\s+DI\s+MISURA)?/i.test(plain(text))) heads.unit = center;
-      else if (/DESCRIZIONE|VOCI\s+VARIABILI/i.test(text)) heads.desc = center;
-      else if (/^VOCE$|^CODICE$/i.test(text)) heads.code = center;
+      if (/IMPORTO\s*BASE|DATO\s*BASE|TARIFFA|VALORE\s*UNITARIO|^BASE$/i.test(text) && heads.base == null) heads.base = center;
+      else if (/^TEMPO$/i.test(text) && heads.tempo == null) heads.tempo = center;
+      else if (/FIGURATIV/i.test(text) && heads.figurativo == null) heads.figurativo = center;
+      else if (/^(?:ORE\s*\/\s*GG|GG\s*\/\s*ORE|ORE\s*\/\s*GIORNI)$/i.test(text) && heads.rif == null) heads.rif = center;
+      else if (/^%$/.test(text) && heads.percent == null) heads.percent = center;
+      else if (/RIFERIMENTO|QUANTITA|Q\.?TA/i.test(plain(text)) && heads.rif == null) heads.rif = center;
+      else if (/TRATTENUTE|RITENUTE|DEBITI/i.test(text) && heads.tratt == null) heads.tratt = center;
+      else if (/COMPETENZE|ACCREDITI/i.test(text) && heads.comp == null) heads.comp = center;
+      else if (/UNITA(?:\s+DI\s+MISURA)?/i.test(plain(text)) && heads.unit == null) heads.unit = center;
+      else if (/DESCRIZIONE|VOCI\s+VARIABILI/i.test(text) && heads.desc == null) heads.desc = center;
+      else if (/^VOCE$|^CODICE$|^COD\.?$/i.test(text) && heads.code == null) heads.code = center;
     }
   }
   return heads;
@@ -662,7 +732,7 @@ function tableHeads(lines, headerIndex) {
 function nearestZone(x, heads) {
   let best = null;
   let distance = Infinity;
-  for (const key of ['base', 'rif', 'tratt', 'comp']) {
+  for (const key of ['tempo', 'base', 'rif', 'percent', 'figurativo', 'tratt', 'comp']) {
     if (heads[key] == null) continue;
     const dx = Math.abs(x - heads[key]);
     if (dx < distance) {
@@ -671,6 +741,53 @@ function nearestZone(x, heads) {
     }
   }
   return best;
+}
+
+function isInsideHeadColumn(x, key, heads) {
+  if (heads[key] == null) return false;
+  const columns = Object.entries(heads)
+    .filter(([, center]) => Number.isFinite(center))
+    .sort((a, b) => a[1] - b[1]);
+  const index = columns.findIndex(([name]) => name === key);
+  if (index < 0) return false;
+  const previous = columns[index - 1];
+  const next = columns[index + 1];
+  const left = previous ? (previous[1] + heads[key]) / 2 : -Infinity;
+  const right = next ? (heads[key] + next[1]) / 2 : Infinity;
+  return x >= left && x < right;
+}
+
+function domesticColumnValue(column, rawValue, numericValue = null) {
+  const raw = normalizzaTesto(rawValue);
+  if (column === 'figurativo') {
+    const normalized = plain(raw);
+    if (/^(?:SI|S|X|VERO|YES)$/.test(normalized)) return { raw, valore: true };
+    if (/^(?:NO|N|FALSO)$/.test(normalized)) return { raw, valore: false };
+    return numericValue == null ? { raw } : { raw, valoreNumerico: numericValue };
+  }
+
+  const quantity = raw.match(/^([+\-−]?(?:\d+(?:[,.]\d+)?))\s*(ORE?|H|GG\.?|GIORNI?|MESI?|SETT\.?)$/i);
+  if (quantity) {
+    const units = plain(quantity[2]);
+    const unita = /^(?:GG|GIORN)/.test(units) ? 'GIORNI'
+      : (/^(?:ORE|ORA|H)$/.test(units) ? 'ORE'
+        : (/^MES/.test(units) ? 'MESI' : 'SETTIMANE'));
+    return { raw, quantita: itNum(quantity[1]), unita };
+  }
+  const periodicity = {
+    MENSILE: 'mensile', GIORNALIERO: 'giornaliero', GIORNALIERA: 'giornaliero',
+    ORARIO: 'orario', ORARIA: 'orario', SETTIMANALE: 'settimanale',
+  }[plain(raw)];
+  if (periodicity) return { raw, periodicita: periodicity };
+  return numericValue == null ? { raw } : { raw, quantita: numericValue };
+}
+
+function setDomesticColumnMeta(voce, column, rawValue, numericValue = null) {
+  voce.meta = Object.assign({}, voce.meta, {
+    domesticColumns: Object.assign({}, voce.meta && voce.meta.domesticColumns, {
+      [column]: domesticColumnValue(column, rawValue, numericValue),
+    }),
+  });
 }
 
 function splitCodeAndDescription(cells, heads) {
@@ -812,6 +929,7 @@ function parseTableRow(line, heads) {
     const text = normalizzaTesto(cell.str);
     const center = cellCenter(cell);
     const number = itNum(text);
+    const zone = nearestZone(center, heads);
     if (/^C\/?\s*DITTA$/i.test(text)) {
       voce.cDitta = true;
       continue;
@@ -820,14 +938,18 @@ function parseTableRow(line, heads) {
       voce.rifUnita = text.replace('.', '').toUpperCase();
       continue;
     }
+    if ((zone === 'tempo' || zone === 'figurativo') && isInsideHeadColumn(center, zone, heads)) {
+      setDomesticColumnMeta(voce, zone, text, number);
+      continue;
+    }
     if (number == null) {
       if (center < leftLimit && !split.mergedDescription.includes(text)) description.push(text);
       else referenceText.push(text);
       continue;
     }
-    const zone = nearestZone(center, heads);
     if (zone === 'base') voce.base = number;
     else if (zone === 'rif') voce.rifQta = number;
+    else if (zone === 'percent') { voce.rifQta = number; voce.rifUnita = '%'; }
     else if (zone === 'tratt') voce.trattenuta = number;
     else if (zone === 'comp') voce.competenza = number;
     else if (center < leftLimit) referenceText.push(text);
@@ -864,44 +986,111 @@ function sameVoice(a, b) {
     && a.competenza === b.competenza;
 }
 
+function continuationDescription(line, heads) {
+  if (!line || numericCells(line).length || isTableHeaderText(line.text)) return '';
+  const text = normalizzaTesto(line.text);
+  if (!/[A-Za-zÀ-ù]{3}/.test(text)
+    || /^(?:TOTALE|NETTO|CONTRIBUTI|CONGUAGLIO|PROGRESSIVI|T\.?\s*F\.?\s*R\.?|RATEI|IRPEF|RIEPILOGO|COMUNICAZIONI|SEZIONE)\b/i.test(text)) return '';
+  const leftLimit = heads.base != null ? heads.base - 32 : (heads.rif != null ? heads.rif - 80 : Infinity);
+  return normalizzaTesto(line.cells
+    .filter(cell => cellCenter(cell) < leftLimit && /[A-Za-zÀ-ù]{2}/.test(cell.str))
+    .map(cell => cell.str).join(' '));
+}
+
+function appendVoiceDescription(voice, text) {
+  const addition = normalizzaTesto(text);
+  if (!voice || !addition || plain(voice.descrizione).includes(plain(addition))) return;
+  voice.descrizione = normalizzaTesto([voice.descrizione, addition].filter(Boolean).join(' '));
+  voice.descrizioneOriginale = voice.descrizione;
+  if (voice.meta) voice.meta.confidence = Math.min(.98, Number(voice.meta.confidence || .5) + .04);
+}
+
+function pendingDescriptionText(pending) {
+  return normalizzaTesto((pending || []).map(item => item.text).join(' '));
+}
+
+function startsWithDescriptionComplement(value) {
+  return /^(?:DI|DEL|DELL(?:A|O|E|I)?|DEI|DEGLI|DELLE|PER|A|AL|ALL(?:A|O|E|I)?|IN|DA|DAL|DALL(?:A|O|E|I)?|SU|SUL|CON)(?:\s|['’])/i
+    .test(normalizzaTesto(value));
+}
+
+function applyPendingDescription(pending, previousVoice, previousY, nextVoice, nextY) {
+  const addition = pendingDescriptionText(pending);
+  if (!addition) return;
+  if (!previousVoice || !nextVoice) {
+    appendVoiceDescription(nextVoice || previousVoice, addition);
+    return;
+  }
+  const previousGap = Math.abs(Number(previousY) - Number(pending[0].y));
+  const nextGap = Math.abs(Number(pending[pending.length - 1].y) - Number(nextY));
+  const gapsAreEquivalent = Math.abs(previousGap - nextGap) <= Math.max(1.5, Math.min(previousGap, nextGap) * .08);
+  const nextContinuesThePhrase = gapsAreEquivalent && startsWithDescriptionComplement(nextVoice.descrizione);
+  const belongsToNext = !nextVoice.descrizione || nextGap < previousGap || nextContinuesThePhrase;
+  if (belongsToNext) {
+    nextVoice.descrizione = normalizzaTesto([addition, nextVoice.descrizione].filter(Boolean).join(' '));
+    nextVoice.descrizioneOriginale = nextVoice.descrizione;
+  } else appendVoiceDescription(previousVoice, addition);
+}
+
 function extractVoices(rec, allLines, warnings) {
   for (const lines of allLines) {
-    const headerIndex = findTableHeader(lines);
-    if (headerIndex < 0) continue;
-    const heads = inferTableHeads(lines, headerIndex, tableHeads(lines, headerIndex));
-    if (heads.base == null || (heads.comp == null && heads.tratt == null)) {
-      warnings.push('Le colonne della tabella voci sono state riconosciute solo in parte: controlla gli importi delle singole righe.');
-    }
+    const headerIndexes = findTableHeaders(lines);
+    if (!headerIndexes.length) continue;
     const stopRe = /^(?:CONTRIBUTI|CONGUAGLIO|PROGRESSIVI|T\.?\s*F\.?\s*R\.?|RATEI|FERIE\s+E\s+PERMESSI|IRPEF|RITENUTE\s+FISCALI|DETRAZIONI|TOTALI|RIEPILOGO|COMUNICAZIONI|CAUSALE\s+PRESENZE)\b/i;
-    let consecutiveMisses = 0;
-    for (let i = headerIndex + 1; i < lines.length; i++) {
-      const text = normalizzaTesto(lines[i].text);
-      if (i > headerIndex + 2 && stopRe.test(text)) break;
-      if (/^X\s*=|L['’]EVENTO\s+CONTINUA|CAUSALE\s+PRESENZE/i.test(text)) break;
-      if (numericCells(lines[i]).length >= 10 && /TOTALE/i.test(text)) break;
-      if (/RETRIBUZIONE\s+UTILE\s+T\.?\s*F\.?\s*R\.?/i.test(text)) {
-        const value = lastNumInLine(lines[i]);
-        if (value != null) rec.tfr.retribUtile = value;
-        continue;
+    for (let section = 0; section < headerIndexes.length; section++) {
+      const headerIndex = headerIndexes[section];
+      const sectionEnd = headerIndexes[section + 1] == null ? lines.length : headerIndexes[section + 1];
+      const heads = inferTableHeads(lines, headerIndex, tableHeads(lines, headerIndex));
+      if (heads.base == null || (heads.comp == null && heads.tratt == null)) {
+        warnings.push('Le colonne della tabella voci sono state riconosciute solo in parte: controlla gli importi delle singole righe.');
       }
-      if (/^QUOTA\s+T\.?\s*F\.?\s*R\.?/i.test(text.trim())) {
-        const value = lastNumInLine(lines[i]);
-        if (value != null) rec.tfr.quotaMese = value;
-        continue;
+      let consecutiveMisses = 0;
+      let lastVoice = null;
+      let lastVoiceY = null;
+      let pendingDescriptions = [];
+      for (let i = headerIndex + 1; i < sectionEnd; i++) {
+        const text = normalizzaTesto(lines[i].text);
+        if (i > headerIndex + 2 && stopRe.test(text)) break;
+        if (/^X\s*=|L['’]EVENTO\s+CONTINUA|CAUSALE\s+PRESENZE/i.test(text)) break;
+        if (numericCells(lines[i]).length >= 10 && /TOTALE/i.test(text)) break;
+        if (/RETRIBUZIONE\s+UTILE\s+T\.?\s*F\.?\s*R\.?/i.test(text)) {
+          const value = lastNumInLine(lines[i]);
+          if (value != null) rec.tfr.retribUtile = value;
+          continue;
+        }
+        if (/^QUOTA\s+T\.?\s*F\.?\s*R\.?/i.test(text.trim())) {
+          const value = lastNumInLine(lines[i]);
+          if (value != null) rec.tfr.quotaMese = value;
+          continue;
+        }
+        if (/^IMP\.?\s*INAIL/i.test(text.trim())) {
+          const value = numericCells(lines[i]).map(cell => itNum(cell.str))[0];
+          if (value != null) rec.orario.impInail = value;
+          continue;
+        }
+        const voice = parseTableRow(lines[i], heads);
+        if (!voice) {
+          const continuation = continuationDescription(lines[i], heads);
+          if (continuation) {
+            pendingDescriptions.push({ text: continuation, y: lines[i].y });
+            consecutiveMisses = 0;
+            continue;
+          }
+          consecutiveMisses++;
+          if (consecutiveMisses > 14 && lastVoice) break;
+          continue;
+        }
+        applyPendingDescription(pendingDescriptions, lastVoice, lastVoiceY, voice, lines[i].y);
+        pendingDescriptions = [];
+        consecutiveMisses = 0;
+        const existing = rec.voci.find(candidate => sameVoice(candidate, voice));
+        if (!existing) {
+          rec.voci.push(voice);
+          lastVoice = voice;
+        } else lastVoice = existing;
+        lastVoiceY = lines[i].y;
       }
-      if (/^IMP\.?\s*INAIL/i.test(text.trim())) {
-        const value = numericCells(lines[i]).map(cell => itNum(cell.str))[0];
-        if (value != null) rec.orario.impInail = value;
-        continue;
-      }
-      const voice = parseTableRow(lines[i], heads);
-      if (!voice) {
-        consecutiveMisses++;
-        if (consecutiveMisses > 14 && rec.voci.length) break;
-        continue;
-      }
-      consecutiveMisses = 0;
-      if (!rec.voci.some(existing => sameVoice(existing, voice))) rec.voci.push(voice);
+      applyPendingDescription(pendingDescriptions, lastVoice, lastVoiceY, null, null);
     }
   }
 }
@@ -1127,8 +1316,8 @@ function extractFiscalSummary(rec, allLines) {
 
 function extractTotals(rec, allLines) {
   const definitions = [
-    { re: /TOTALE\s+COMPETENZE|TOTALE\s+SPETTANZE|TOTALE\s+LORDO/i, key: 'competenze' },
-    { re: /TOTALE\s+(?:TRATTENUTE|RITENUTE)|TOTALE\s+DEDUZIONI/i, key: 'trattenute' },
+    { re: /TOT(?:ALE)?\.?\s+(?:COMPETENZE|SPETTANZE|LORDO)/i, key: 'competenze' },
+    { re: /TOT(?:ALE)?\.?\s+(?:TRATTENUTE|RITENUTE|DEDUZIONI)/i, key: 'trattenute' },
     { re: /ARROTONDAMENTO/i, key: 'arrotondamento' },
     { re: /(?:NETTO(?:\s+DEL\s+MESE|\s+IN\s+BUSTA|\s+A\s+PAGARE|\s+PAGATO)?|RETRIBUZIONE\s+NETTA|IMPORTO\s+NETTO)/i, key: 'netto' },
   ];
@@ -1728,6 +1917,9 @@ function parsePdfPages(pages, options = {}) {
   const fullText = allLines.map(lines => lines.map(line => line.text).join('\n')).join('\n');
   const source = options.source === 'ocr' ? 'ocr' : 'pdf';
   const rec = recordVuoto(source, rilevaSoftware(fullText));
+  const documentClassification = classificaDocumento(fullText);
+  rec.meta.documentClassification = documentClassification;
+  if (documentClassification.inScope === false) return rejectOutOfScope(rec, documentClassification);
   rec.documento.tipo = rilevaTipoCedolino(fullText);
   rec.meta.settore = typeof parserSectorForText === 'function' ? parserSectorForText(fullText).id : 'privato-lul';
   rec.meta.pageSizes = Array.isArray(options.pageSizes) ? options.pageSizes : [];
@@ -1756,6 +1948,9 @@ function parseFreeText(text) {
   const warnings = ['Estrazione da testo/OCR: precisione limitata, controlla tutti i campi.'];
   const normalized = normalizzaTesto(text);
   const rec = recordVuoto('ocr', rilevaSoftware(normalized));
+  const documentClassification = classificaDocumento(normalized);
+  rec.meta.documentClassification = documentClassification;
+  if (documentClassification.inScope === false) return rejectOutOfScope(rec, documentClassification);
   rec.documento.tipo = rilevaTipoCedolino(normalized);
   rec.meta.settore = typeof parserSectorForText === 'function' ? parserSectorForText(normalized).id : 'privato-lul';
   rec.periodo = parsePeriodo(normalized);
@@ -1984,4 +2179,4 @@ function findOfficialCcnlByText(value) {
 }
 
 // eslint-disable-next-line no-unused-vars
-const Parser = { parsePdfPages, parseFreeText, trovaCcnl, suggerisciCcnl, cnelContractByCode, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, valutaCoerenza, calcoloVoce, fieldConfidence, normalizzaTesto, ripulisciRecord, quadraturaTotali, rilevaTipoCedolino };
+const Parser = { parsePdfPages, parseFreeText, trovaCcnl, suggerisciCcnl, cnelContractByCode, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, valutaCoerenza, calcoloVoce, fieldConfidence, normalizzaTesto, ripulisciRecord, quadraturaTotali, rilevaTipoCedolino, classificaDocumento };

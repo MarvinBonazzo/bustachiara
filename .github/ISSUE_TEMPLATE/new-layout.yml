@@ -1,0 +1,48 @@
+name: Nuovo layout di cedolino
+description: Proponi una struttura non riconosciuta usando esclusivamente un fixture sintetico.
+title: "[Layout] "
+labels:
+  - parser
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questa Issue sarà pubblica. **Non caricare il PDF, foto, screenshot, OCR o export del tuo cedolino.**
+        Ricrea il minimo caso con identità e numeri inventati; mantieni soltanto struttura e nomi generici delle colonne.
+  - type: input
+    id: family
+    attributes:
+      label: Famiglia del cedolino
+      placeholder: "Esempio: NoiPA, lavoro domestico, Cassa Edile, gestionale non noto"
+    validations:
+      required: true
+  - type: textarea
+    id: structure
+    attributes:
+      label: Struttura non riconosciuta
+      description: Descrivi intestazioni, colonne e numero di pagine senza copiare dati personali.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Risultato atteso
+      description: Indica quali campi sintetici dovrebbero essere estratti e da quale colonna.
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Fixture anonimo facoltativo
+      description: Incolla soltanto JSON sintetico già ricontrollato. Non inserire testo OCR reale.
+      render: json
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Controllo privacy
+      options:
+        - label: Ho sostituito identità, azienda, causali interne e tutti gli importi con dati inventati.
+          required: true
+        - label: Non sto allegando un documento, screenshot, OCR o export reale.
+          required: true
+

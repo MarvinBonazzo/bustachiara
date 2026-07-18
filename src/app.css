@@ -34,6 +34,10 @@ body.modal-open { overflow: hidden; }
 .install-btn:hover { background: var(--brand-2); color: #fff; }
 
 /* ============ Schede ============ */
+#screen-nav { display: flex; gap: 6px; max-width: 1000px; margin: 2px auto 0; padding: 0 20px; }
+#screen-nav button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 10px; border: 1px solid var(--sep); border-radius: 999px; color: var(--brand-2); background: rgba(255,255,255,.7); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+#screen-nav button:hover:not(:disabled) { border-color: rgba(8,121,86,.32); background: var(--brand-soft); }
+#screen-nav button:disabled { opacity: .36; }
 #tabs { display: flex; gap: 8px; max-width: 1000px; margin: 6px auto 0; padding: 0 20px; overflow-x: auto; scrollbar-width: none; }
 .tab::-webkit-scrollbar, #tabs::-webkit-scrollbar { display: none; }
 .tab { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 15px; font-weight: 500; padding: 10px 2px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
@@ -357,6 +361,8 @@ footer .license { margin-top: 10px; font-weight: 600; }
   .logo { width: 43px; height: 43px; border-radius: 12px; }
   .topctrl { width: 100%; gap: 6px; }
   #privacy-badge, .seg-btn { flex: 1; padding-inline: 8px; text-align: center; }
+  #screen-nav { margin-top: 4px; padding-inline: 16px; }
+  #screen-nav button { min-height: 34px; padding-inline: 11px; }
   /* barra schede in basso, stile iOS */
   #tabs { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; background: rgba(255,255,255,.96); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--sep); padding: 6px 4px calc(8px + env(safe-area-inset-bottom)); z-index: 50; gap: 0; justify-content: space-around; }
   .tab { flex: 1 1 0; text-align: center; font-size: 10px; line-height: 1.12; font-weight: 650; color: var(--muted); padding: 10px 1px; border-radius: 10px; border-bottom: 0; white-space: normal; }

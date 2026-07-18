@@ -109,12 +109,133 @@ assert.match(detailSource, /SourcePreviewCache\.get\(record\.id\)/, 'Modifica da
 assert.match(detailSource, /target-edit/, 'la correzione deve portare alla riga esatta');
 
 const importChoiceSource = sourceBetween('function proponiDopoImport', 'function startVerifica');
+assert.match(importChoiceSource, /classification\.inScope === false/);
+assert.match(importChoiceSource, /non lo analizzerà e non lo salverà/);
 assert.match(importChoiceSource, />Salva e analizza<\/button>/);
 assert.match(importChoiceSource, />Controlla i dati<\/button>/);
 assert.match(importChoiceSource, /completaSalvataggio\(record\)/, 'Salva e analizza deve aprire il Riassunto');
+const voiceExplanationSource = sourceBetween('function vociInfoHtml', 'function controlloUtileVoce');
+assert.match(voiceExplanationSource, /spiegazioneCompletaVoce\(v, s\)/, 'aprendo una voce deve comparire anche il motivo per cui esiste');
+assert.match(voiceExplanationSource, /function spiegazioneCompletaVoce/);
 assert.match(templateSource, />Dettagliato<\/button>/);
+assert.match(templateSource, /id="screen-nav"[\s\S]*id="nav-back"[\s\S]*id="nav-forward"/, 'devono esserci i comandi Indietro e Avanti');
+assert.match(uiSource, /window\.addEventListener\('popstate'/, 'le frecce del browser devono ripristinare la schermata');
+assert.match(uiSource, /history\.back\(\)/);
+assert.match(uiSource, /history\.forward\(\)/);
+assert.match(uiSource, /sessionStorage\.setItem\(APP_HISTORY_STORAGE_PREFIX/, 'la posizione massima dell’app deve sopravvivere al reload della scheda');
+assert.match(uiSource, /window\.addEventListener\('popstate', handleHistoryPopState\)/);
+assert.match(uiSource, /\['#topbar', '#screen-nav', '#tabs', 'main', 'footer'\]/, 'i comandi di navigazione devono essere disattivati dietro ai popup');
+assert.match(cssSource, /#screen-nav button/);
 assert.match(cssSource, /td\[data-label="Trattenuta"\][^{]*\{[^}]*background:\s*var\(--alert-bg\)/s);
 assert.match(cssSource, /td\[data-label="Competenza"\][^{]*\{[^}]*background:\s*var\(--ok-bg\)/s);
+
+const navSessionValues = new Map();
+const navSessionStorage = {
+  getItem(key) { return navSessionValues.has(key) ? navSessionValues.get(key) : null; },
+  setItem(key, value) { navSessionValues.set(key, String(value)); },
+};
+const navHistory = {
+  entries: [], index: -1, pushes: [], replacements: [],
+  get state() { return this.index >= 0 ? this.entries[this.index].state : null; },
+  pushState(state, _title, url) {
+    this.entries.splice(this.index + 1);
+    this.entries.push({ state: { ...state }, url });
+    this.index += 1;
+    this.pushes.push({ state: { ...state }, url });
+  },
+  replaceState(state, _title, url) {
+    const entry = { state: { ...state }, url };
+    if (this.index < 0) { this.entries.push(entry); this.index = 0; }
+    else this.entries[this.index] = entry;
+    this.replacements.push({ state: { ...state }, url });
+  },
+  back() { if (this.index > 0) this.index -= 1; return this.state; },
+  forward() { if (this.index + 1 < this.entries.length) this.index += 1; return this.state; },
+};
+
+function createNavigationRuntime() {
+  const navViews = ['importa', 'guida', 'consigli'].map(name => ({
+    id: `view-${name}`,
+    classList: { add() {}, remove() {} },
+  }));
+  const navTabs = navViews.map(view => ({
+    dataset: { view: view.id.replace('view-', '') },
+    classList: { toggle() {} },
+    setAttribute() {}, removeAttribute() {},
+  }));
+  const navBack = { disabled: false };
+  const navForward = { disabled: false };
+  const context = {
+    history: navHistory,
+    sessionStorage: navSessionStorage,
+    crypto: { randomUUID: () => 'test-navigation-trail' },
+    window: { scrollTo() {} },
+    Store: { data: { records: [] } },
+    closeInfo() {},
+    renderImporta() {}, renderGuida() {}, renderConsigli() {}, renderProgetto() {}, renderImpostazioni() {},
+    renderVerifica() {}, renderDettaglio() {}, renderRiassunto() {},
+    $: selector => selector === '#tabs' ? { addEventListener() {} }
+      : selector === '#nav-back' ? navBack
+        : selector === '#nav-forward' ? navForward
+          : navViews.find(view => `#${view.id}` === selector) || null,
+    $$: selector => selector === '.view' ? navViews : selector === '#tabs .tab' ? navTabs : [],
+    recSorted: () => [],
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    sourceBetween('/* ---------- navigazione ---------- */', '/* ============================================================\n   IMPORTA')
+      + '\nthis.navigationUnderTest = { showView, restoreHistoryEntry, handleHistoryPopState };',
+    context,
+  );
+  return { api: context.navigationUnderTest, back: navBack, forward: navForward };
+}
+
+const firstNavigationRuntime = createNavigationRuntime();
+firstNavigationRuntime.api.restoreHistoryEntry();
+firstNavigationRuntime.api.showView('importa', { historyMode: 'replace' });
+assert.equal(navHistory.replacements.length, 1);
+assert.equal(navHistory.state.view, 'importa');
+assert.equal(firstNavigationRuntime.back.disabled, true);
+firstNavigationRuntime.api.showView('guida');
+assert.equal(navHistory.pushes.length, 1);
+assert.equal(navHistory.state.position, 1);
+assert.equal(firstNavigationRuntime.back.disabled, false);
+firstNavigationRuntime.api.showView('guida');
+assert.equal(navHistory.pushes.length, 1, 'riaprire la stessa schermata non deve duplicare la cronologia');
+firstNavigationRuntime.api.showView('consigli');
+assert.equal(navHistory.pushes.length, 2);
+assert.equal(navHistory.state.position, 2);
+
+// popstate verso la schermata precedente: "Avanti" deve conoscere la voce già esistente.
+firstNavigationRuntime.api.handleHistoryPopState({ state: navHistory.back() });
+assert.equal(navHistory.state.view, 'guida');
+assert.equal(firstNavigationRuntime.back.disabled, false);
+assert.equal(firstNavigationRuntime.forward.disabled, false, 'dopo popstate deve essere disponibile la schermata Avanti dell’app');
+
+// Simula un reload reale: nuovo runtime JS, stessa entry History e stesso sessionStorage della scheda.
+const reloadedNavigationRuntime = createNavigationRuntime();
+const reloadedState = reloadedNavigationRuntime.api.restoreHistoryEntry();
+reloadedNavigationRuntime.api.showView(reloadedState.view, { historyMode: 'replace' });
+assert.equal(navHistory.state.position, 1, 'il reload non deve azzerare la posizione corrente');
+assert.equal(reloadedNavigationRuntime.back.disabled, false);
+assert.equal(reloadedNavigationRuntime.forward.disabled, false, 'il reload non deve dimenticare la schermata Avanti');
+
+reloadedNavigationRuntime.api.handleHistoryPopState({ state: navHistory.forward() });
+assert.equal(navHistory.state.view, 'consigli');
+assert.equal(navHistory.state.position, 2);
+assert.equal(reloadedNavigationRuntime.forward.disabled, true, 'all’ultima schermata dell’app Avanti deve disattivarsi');
+
+// Un nuovo push dopo Indietro tronca davvero la vecchia diramazione Avanti.
+reloadedNavigationRuntime.api.handleHistoryPopState({ state: navHistory.back() });
+reloadedNavigationRuntime.api.showView('importa');
+assert.equal(navHistory.entries.length, 3);
+assert.equal(navHistory.entries[2].state.view, 'importa');
+assert.equal(reloadedNavigationRuntime.forward.disabled, true);
+
+assert.doesNotMatch(uiSource, /vieta al browser qualunque connessione di rete/, 'la CSP consente risorse same-origin e non va descritta come isolamento totale dalla rete');
+assert.match(uiSource, /non invia il documento né i dati estratti/);
+assert.match(uiSource, /blocca i servizi di terze parti/);
+assert.match(uiSource, /Le intelligenze artificiali possono sbagliare e anche BustaChiara può sbagliare/);
 
 const profileContext = {
   Store: { data: { layoutProfiles: [] } },
@@ -186,6 +307,6 @@ let activation;
 serviceWorkerContext.handlers.activate({ waitUntil(promise) { activation = promise; } });
 await activation;
 assert.deepEqual(serviceWorkerContext.deleted, ['bustachiara-v9-evidenze-valore', 'bustachiara-v10-ocr-locale']);
-assert.match(serviceWorkerSource, /bustachiara-v13-presenze-flusso-semplice/);
+assert.match(serviceWorkerSource, /bustachiara-v15-navigazione-parser-fonti/);
 
 console.log('OK — regressioni Riassunto e cache PWA');

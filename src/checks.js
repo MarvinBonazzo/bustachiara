@@ -104,8 +104,8 @@ function eseguiControlli(rec, ccnl, storico = []) {
   /* --- 9. Imposta sostitutiva rinnovi (2026) --- */
   if (d.impRinnovi != null && d.impSostRinnovi != null && fisco.impSostRinnovi) {
     const attesa = d.impRinnovi * fisco.impSostRinnovi.aliq / 100;
-    if (near(attesa, d.impSostRinnovi, 0.05)) add('ok', 'IRPEF', 'Detassazione rinnovi CCNL applicata (5%)', `${fmtEur(d.impRinnovi)} € di aumenti da rinnovo tassati al 5% = ${fmtEur(attesa)} € invece dell’aliquota piena: è un VANTAGGIO. ${fisco.impSostRinnovi.fonte}`, null, ['normattiva']);
-    else add('info', 'IRPEF', 'Imposta sostitutiva rinnovi da verificare', `Attesa ${fmtEur(attesa)} € (5% di ${fmtEur(d.impRinnovi)} €), trovata ${fmtEur(d.impSostRinnovi)} €.`, null, ['normattiva']);
+    if (near(attesa, d.impSostRinnovi, 0.05)) add('ok', 'IRPEF', 'Detassazione rinnovi CCNL applicata (5%)', `${fmtEur(d.impRinnovi)} € di aumenti da rinnovo tassati al 5% = ${fmtEur(attesa)} € invece dell’aliquota piena: è un VANTAGGIO. ${fisco.impSostRinnovi.fonte}`, null, ['bilancio2026']);
+    else add('info', 'IRPEF', 'Imposta sostitutiva rinnovi da verificare', `Attesa ${fmtEur(attesa)} € (5% di ${fmtEur(d.impRinnovi)} €), trovata ${fmtEur(d.impSostRinnovi)} €. Verifica anche il limite di reddito 2025 di ${fmtEur(fisco.impSostRinnovi.sogliaReddito, 0)} € e la data del rinnovo.`, null, ['bilancio2026']);
   }
 
   /* --- 10. TFR quota del mese --- */
@@ -222,8 +222,8 @@ function eseguiControlli(rec, ccnl, storico = []) {
   }
 
   /* --- 18. Addizionali --- */
-  if (d.addRegionale != null) add('info', 'IRPEF', 'Addizionale regionale in corso', 'Stai pagando a rate (gen–nov) l’addizionale sull’imponibile dell’anno scorso. Aliquota verificabile sulle tabelle ufficiali del Dip. Finanze.', null, ['finanze']);
-  if (d.addComunale == null && mese && mese >= 4) add('info', 'IRPEF', 'Addizionale comunale assente', 'Se il tuo comune la applica (quasi tutti), dovrebbe esserci da marzo/aprile (acconto) o gennaio (saldo). Alcuni comuni però hanno esenzioni per redditi bassi: verifica il tuo comune.', null, ['finanze']);
+  if (d.addRegionale != null) add('info', 'IRPEF', 'Addizionale regionale in corso', 'Stai pagando a rate l’imposta regionale calcolata sul reddito dell’anno precedente. Esiste per destinare una quota del prelievo alla Regione: aliquote, scaglioni ed esenzioni cambiano in base al domicilio fiscale. Controlla anno e Regione nelle tabelle ufficiali.', null, ['finanze']);
+  if (d.addComunale == null && mese && mese >= 4) add('info', 'IRPEF', 'Addizionale comunale non riconosciuta', 'Non vedo la quota destinata al Comune. Non significa automaticamente errore: può esserci una soglia di esenzione, il Comune può non applicarla oppure il saldo/acconto può essere esposto con un’altra causale. Controlla il Comune di domicilio fiscale e l’anno nell’elenco ufficiale.', null, ['finanzeComune']);
 
   /* --- 19. Confronto con lo storico --- */
   if (storico && storico.length && t.netto != null && rec.periodo) {

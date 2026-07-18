@@ -23,14 +23,36 @@ regressione riproduce quindi famiglie strutturali, non documenti o identità rea
 
 Le fonti pubbliche usate come riferimento visivo e terminologico sono:
 
-- [EBR Piemonte — manuale per leggere il cedolino](https://www.ebrpiemonte.it/images/documenti/2022/manuali/MANUALE_LEGGERE_ED_INTERPRETARE_IL_CEDOLINO_PAGA.pdf), per il LUL privato;
-- [ISPRA/NoiPA — guida alle voci del cedolino](https://www.isprambiente.gov.it/it/amministrazione-trasparente/servizi-erogati/noipa/il-cedolino), per il pubblico impiego;
-- [CAF UIL Lombardia — materiale sul lavoro domestico](https://www.cafuil.lombardia.it/wp-content/uploads/2025/01/SLIDE-CORSO-COLF-E-BADANTI-del-20-12-2024-1.pdf), per colf e badanti;
-- [Cassa Edile Savona — esempio di busta paga](https://www.cassaedilesavona.com/docs/esempio-di-busta-paga/), per le voci edili;
+- [EBR Piemonte — manuale per leggere il cedolino](https://www.ebrpiemonte.it/images/documenti/2022/manuali/MANUALE_LEGGERE_ED_INTERPRETARE_IL_CEDOLINO_PAGA.pdf), per il LUL classico con colonne `COD.`, `ORE/GG`, `%`, `DATO BASE`, `RITENUTE` e `COMPETENZE`;
+- [NoiPA — come si legge il cedolino](https://noipa.mef.gov.it/cl/come-si-legge-il-cedolino-noipa), per il pubblico impiego a riquadri e dettaglio su più pagine;
+- [TeamSystem — esempio di cedolino LYNFA multipagina](https://marketing.teamsystem.com/diretta-professionisti/dem-diretta-prof/newsletter-marzo-2018-dir-prof), per fronte economico, retro con ratei, progressivi, fondi e TFR;
+- [lavoro domestico — facsimile pubblico](https://workledger.it/modulistica/fac-simile-busta-paga-colf-badante.pdf), per colonne `Tempo`, `Base`, `Figurativo`, `Competenze` e `Trattenute`, calendario e contributi domestici;
+- [Cassa Edile Brescia — quattro esempi pubblici](https://www.cassaedilebrescia.it/wp-content/uploads/2023/01/2022-01-GENNAIO-2022-BUSTE-PAGA.pdf), per ordinario, malattia, infortunio e impiegato con GNF/CAPE e imponibili distinti;
+- [INPS — aliquote 2026 per operai agricoli](https://www.inps.it/it/it/inps-comunica/notizie/dettaglio-news-page.news.2026.04.lavoratori-agricoli-le-aliquote-contributive-2026.html), per OTI/OTD e conteggi a giornate;
+- [INPS — circolare 6/2026](https://www.inps.it/it/it/inps-comunica/atti/circolari-messaggi-e-normativa/dettaglio.circolari-e-messaggi.2026.01.circolare-numero-6-del-30-01-2026_15151.html), per retribuzioni convenzionali, massimali e categorie particolari come spettacolo e marittimi;
 - [CNEL — Contratti Open Data](https://www.cnel.it/archivio-contratti/contratti-open-data), per codici, titoli e settori dei contratti.
 
 I documenti pubblici vengono consultati, non copiati nel repository. I test contengono solo
 testo e numeri inventati: nessun nome, codice fiscale, datore o cedolino reale.
+
+## Come viene misurata la precisione
+
+Dire “funziona con qualsiasi cedolino” non è una misura verificabile. Il benchmark separa:
+
+- PDF nativi a coordinate, scansioni e testo OCR rumoroso;
+- correttezza dei campi, delle singole voci e del lato contabile;
+- importo, segno, unità e colonna di provenienza;
+- righe spurie, quadratura dei totali e zona evidenziata sul documento;
+- formati già conosciuti e layout nuovi tenuti fuori dalle regole durante lo sviluppo.
+
+La CI richiede il 100% delle asserzioni del corpus versionato. Il target progettuale sui PDF
+nativi è almeno il 99,5% dei valori numerici e zero righe economiche inventate. Questo non
+equivale al 100% su qualunque documento del mondo: una scansione illeggibile deve produrre
+una richiesta di controllo, non una falsa certezza.
+
+Sono inoltre necessari casi negativi per CU, modello 730, F24, contratto di assunzione,
+semplice prospetto presenze e cedolino pensione: condividono molte parole con una busta paga,
+ma non devono essere archiviati come cedolini da lavoro dipendente.
 
 ## Pipeline gratuita e locale
 
@@ -63,7 +85,7 @@ testo e numeri inventati: nessun nome, codice fiscale, datore o cedolino reale.
 
 Per il miglioramento delle scansioni sono state seguite le indicazioni ufficiali di
 [Tesseract sull'accuratezza](https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html) e
-la tecnica di [soglia adattiva documentata da OpenCV](https://docs.opencv.org/master/d7/dd0/tutorial_js_thresholding.html).
+la tecnica di [soglia adattiva documentata da OpenCV](https://docs.opencv.org/4.x/d7/dd0/tutorial_js_thresholding.html).
 
 ## Aggiornamento CNEL
 
@@ -79,8 +101,9 @@ codice e genera `src/cnel-index.js`. Al 14 luglio 2026 l'indice contiene 2.260 d
    testuali e importi originali vengono rimossi o trasformati. Ricontrollare comunque le
    causali proprietarie prima di condividerlo.
 3. Ridurre il caso alla minima struttura che riproduce l'errore.
-4. Aggiungerlo a `tests/fixtures/general-layouts.json` con i campi attesi.
-5. Correggere una regola generale e lanciare `node tests/parser.test.mjs`.
+4. Aggiungerlo a `tests/fixtures/parser-sector-matrix.json` con coordinate e campi attesi.
+5. Correggere una regola generale e lanciare `node tests/parser-matrix.test.mjs` insieme
+   alla suite completa descritta nel README.
 
 Un modello ML nel browser è tecnicamente possibile con ONNX Runtime Web, ma non viene
 incluso finché non esiste un corpus ampio, etichettato e legalmente riutilizzabile: senza
