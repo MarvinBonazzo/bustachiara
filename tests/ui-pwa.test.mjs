@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const cssSource = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
+const templateSource = readFileSync(new URL('../src/template.html', import.meta.url), 'utf8');
+const serviceWorkerSource = readFileSync(new URL('../pwa/sw.js', import.meta.url), 'utf8');
 
 function sourceBetween(start, end) {
   const from = uiSource.indexOf(start);
@@ -52,18 +55,29 @@ for (const title of ['Ore in più', 'Assenze pagate', 'Dal lordo al netto', 'Con
 }
 assert.ok(broadComments.length <= 12);
 
+const attendanceComments = commentsContext.commentiSempliciUnderTest({
+  id: 'attendance-hours',
+  presenze: { righe: [{ descrizione: 'Ferie/Permessi/Banca ore', tipo: 'assenza', totale: 20.01, unita: 'ORE' }] },
+  voci: [{ descrizione: 'Ferie godute', rifQta: 20.01, rifUnita: 'ORE' }],
+  ratei: {}, tfr: {}, totali: {},
+});
+const attendanceComment = attendanceComments.find(comment => comment.title === 'Assenze pagate');
+assert.ok(attendanceComment, 'la tabella presenze deve generare un commento semplice');
+assert.match(attendanceComment.text, /20,01 ore/i);
+assert.doesNotMatch(attendanceComment.text, /20,01 €/i, 'una quantità in ore non deve essere presentata come denaro');
+
 const voiceContext = {
   esc: value => String(value),
   aliasKey: value => String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(),
   fmtEur: value => Number(value).toFixed(2).replace('.', ','),
   spiegaVoce: voice => ({ nome: voice.nome, cat: voice.cat, cosa: voice.cosa, controlla: '' }),
   spiegazioneBreveVoce: (_voice, explanation) => explanation.cosa,
-  controlloUtileVoce: () => '',
+  controlloUtileVoce: voice => voice.warning || '',
 };
 vm.createContext(voiceContext);
 vm.runInContext(sourceBetween('function vociTableHTML', 'function importoVoci') + '\nthis.vociTableUnderTest = vociTableHTML;', voiceContext);
 const voicesHtml = voiceContext.vociTableUnderTest({ voci: [
-  { descrizione: 'Retribuzione ordinaria', nome: 'Retribuzione ordinaria', cat: 'competenza', cosa: 'È la paga normale del mese.', competenza: 1600 },
+  { descrizione: 'Retribuzione ordinaria', nome: 'Retribuzione ordinaria', cat: 'competenza', cosa: 'È la paga normale del mese.', competenza: 1600, warning: 'Il calcolo base × quantità non coincide con l’importo: confronta questa riga col documento.' },
   { descrizione: 'Contributo INPS', nome: 'Contributi INPS', cat: 'trattenuta', cosa: 'Serve a pensione e tutele.', trattenuta: 147 },
   { descrizione: 'Ore lavorate', nome: 'Ore lavorate', cat: 'dato', cosa: 'Indica le ore del mese.' },
   { descrizione: 'Recupero competenza', nome: 'Recupero competenza', cat: 'competenza', cosa: 'Corregge una somma precedente.', competenza: -50 },
@@ -81,13 +95,26 @@ assert.match(voicesHtml, /voice-ledger-group dato/);
 assert.match(voicesHtml, /Competenze/);
 assert.match(voicesHtml, /Trattenute/);
 assert.match(voicesHtml, /Dati di calcolo/);
+assert.match(voicesHtml, /class="voice-ledger-check" data-edit-voice="0"/);
+assert.match(voicesHtml, /Correggi/);
 
 const summarySource = sourceBetween('function renderRiassunto', 'function renderDettaglioCompleto');
 const detailSource = sourceBetween('function renderDettaglioCompleto', 'function bindDettaglioCommon');
-assert.match(summarySource, /<h2>In parole semplici<\/h2>/, 'la lettura semplice deve stare nel Riassunto');
+assert.match(summarySource, /<h2>Riassunto dei dati<\/h2>/, 'la lettura semplice deve stare nel Riassunto');
 assert.doesNotMatch(detailSource, /<h2>In parole semplici<\/h2>/, 'il Dettaglio non deve duplicare la lettura semplice');
-assert.match(detailSource, /Dettaglio del cedolino/);
+assert.match(detailSource, /Cedolino dettagliato/);
 assert.match(detailSource, /Tutte le voci/);
+assert.match(detailSource, /Tocca la voce se vuoi approfondire\./);
+assert.match(detailSource, /SourcePreviewCache\.get\(record\.id\)/, 'Modifica dati deve riusare l’originale tenuto in RAM');
+assert.match(detailSource, /target-edit/, 'la correzione deve portare alla riga esatta');
+
+const importChoiceSource = sourceBetween('function proponiDopoImport', 'function startVerifica');
+assert.match(importChoiceSource, />Salva e analizza<\/button>/);
+assert.match(importChoiceSource, />Controlla i dati<\/button>/);
+assert.match(importChoiceSource, /completaSalvataggio\(record\)/, 'Salva e analizza deve aprire il Riassunto');
+assert.match(templateSource, />Dettagliato<\/button>/);
+assert.match(cssSource, /td\[data-label="Trattenuta"\][^{]*\{[^}]*background:\s*var\(--alert-bg\)/s);
+assert.match(cssSource, /td\[data-label="Competenza"\][^{]*\{[^}]*background:\s*var\(--ok-bg\)/s);
 
 const profileContext = {
   Store: { data: { layoutProfiles: [] } },
@@ -154,10 +181,11 @@ const serviceWorkerContext = {
   location: { origin: 'https://example.test' },
 };
 vm.createContext(serviceWorkerContext);
-vm.runInContext(readFileSync(new URL('../pwa/sw.js', import.meta.url), 'utf8'), serviceWorkerContext);
+vm.runInContext(serviceWorkerSource, serviceWorkerContext);
 let activation;
 serviceWorkerContext.handlers.activate({ waitUntil(promise) { activation = promise; } });
 await activation;
 assert.deepEqual(serviceWorkerContext.deleted, ['bustachiara-v9-evidenze-valore', 'bustachiara-v10-ocr-locale']);
+assert.match(serviceWorkerSource, /bustachiara-v13-presenze-flusso-semplice/);
 
 console.log('OK — regressioni Riassunto e cache PWA');

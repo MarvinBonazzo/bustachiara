@@ -168,6 +168,38 @@ assert.equal(irpefOnYearLikeBase.base, 2025, 'un imponibile uguale a un anno va 
 assert.equal(irpefOnYearLikeBase.rifQta, 23);
 assert.equal(Parser.calcoloVoce(irpefOnYearLikeBase).ok, true);
 
+const attendanceDayCells = Array.from({ length: 30 }, (_, index) => [122 + index * 14, String(index + 1)]);
+const structuredTables = Parser.parsePdfPages([page([
+  [660, [[268, 'Ferie'], [286, 'e'], [292, 'permessi'], [372, 'RESIDUO'], [390, 'AP.'], [411, 'MATURATI'], [440, 'GODUTI'], [456, 'A.C.'], [478, 'GODUTI'], [494, 'A.P.'], [513, 'TI'], [517, 'RIMANGONO'], [543, '(SALDO)']]],
+  [648, [[268, 'Ferie'], [346, '(ORE)'], [411, '86,42'], [444, '28,33'], [482, '31,70']]],
+  [641, [[538, '58,08']]],
+  [628, [[268, 'ROL'], [346, '(ORE)'], [381, '6,66'], [411, '16,00'], [538, '22,66']]],
+  [500, [...attendanceDayCells, [546, 'Totale']]],
+  [490, [[30, 'Causale'], [54, 'presenze/assenze'], [551, 'ore']]],
+  [480, [[39, 'Ore lavorate ordinarie'], [122, '6,67'], [136, '6,67'], [550, '153,41']]],
+  [475, [[39, 'Straordinari/Lav.suppl/Banca ore'], [150, '6,67'], [178, '6,67'], [550, '26,68']]],
+  [470, [[39, 'Ferie/Permessi/Banca ore'], [410, '6,67'], [466, '6,67'], [480, '6,67'], [550, '20,01']]],
+  [450, [[28, 'Contributi'], [206, 'DESCRIZIONE CONTRIBUTO'], [294, 'ALIQ.'], [320, 'IMPONIBILE'], [351, 'IMPORTO']]],
+  [440, [[206, 'FONDO'], [226, 'INTEGR.'], [248, 'SALARIALE'], [281, 'FIS'], [294, '0,267'], [320, '2.145,00'], [351, '5,73']]],
+  [430, [[28, 'IRPEF']]],
+])]);
+const attendanceRows = structuredTables.record.presenze.righe;
+assert.equal(attendanceRows.find(row => row.tipo === 'ordinario').totale, 153.41);
+assert.equal(attendanceRows.find(row => row.tipo === 'ore-extra').totale, 26.68);
+assert.equal(attendanceRows.find(row => row.tipo === 'assenza').totale, 20.01);
+assert.equal(structuredTables.record.orario.oreOrdinarie, 153.41);
+assert.equal(structuredTables.record.voci.some(voice => /Ferie\/Permessi\/Banca/i.test(voice.descrizione)), false,
+  'una riga della tabella presenze non deve diventare una competenza in euro');
+assert.equal(structuredTables.record.voci.filter(voice => /FONDO INTEGR\. SALARIALE FIS/i.test(voice.descrizione)).length, 1);
+assert.equal(structuredTables.record.voci.some(voice => /^(?:FONDO|INTEGR\.|SALARIALE|FIS)$/i.test(voice.descrizione)), false,
+  'la descrizione contributiva deve restare unita');
+approx(structuredTables.record.ratei.ferie.maturato, 86.42);
+approx(structuredTables.record.ratei.ferie.goduto, 28.33);
+approx(structuredTables.record.ratei.ferie.godutoAp, 31.70);
+approx(structuredTables.record.ratei.ferie.saldo, 58.08);
+approx(structuredTables.record.ratei.permessi.residuoAp, 6.66);
+approx(structuredTables.record.ratei.permessi.saldo, 22.66);
+
 const fipe = Parser.trovaCcnl(jet.record, Data.CCNL_DB);
 assert.equal(fipe.id, 'pubblici-esercizi-fipe');
 assert.equal(Data.classificaVoce(jet.record.voci.find(v => v.codice === '0')).nome, 'Retribuzione ordinaria');

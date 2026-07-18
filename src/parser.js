@@ -481,6 +481,7 @@ function recordVuoto(fonte, software) {
     elementi: { altri: [] },
     orario: {},
     voci: [],
+    presenze: { righe: [] },
     tfr: {},
     progressivi: {},
     ratei: {},
@@ -744,6 +745,11 @@ function normalizeVoiceColumnSemantics(voce) {
     voce.base = null;
     referenceOnly = true;
   }
+  if (isReferenceYear(voce.rifQta) && voce.rifUnita !== '%' && !directCalculationMatches) {
+    references.push(`Anno ${Math.trunc(voce.rifQta)}`);
+    voce.rifQta = null;
+    referenceOnly = true;
+  }
   const referenceLabel = normalizzaTesto(voce.rifTesto || '');
   if (voce.rifQta != null && voce.rifUnita !== '%'
     && /(?:RESIDU|RIFERIMENTO|ANNO|REGIONE|COMUNE|PROVINCIA|SALDO|ACCONTO)/i.test(referenceLabel)) {
@@ -914,6 +920,94 @@ function addSyntheticVoice(rec, voice) {
   }
 }
 
+function attendanceTableForLines(lines) {
+  for (let dayIndex = 0; dayIndex < lines.length; dayIndex++) {
+    const dayCells = numericCells(lines[dayIndex]).filter(cell => {
+      const value = itNum(cell.str);
+      return Number.isInteger(value) && value >= 1 && value <= 31;
+    });
+    const values = dayCells.map(cell => itNum(cell.str));
+    const ordered = values.filter((value, index) => !index || value > values[index - 1]);
+    if (dayCells.length < 7 || ordered.length < dayCells.length * .8 || !values.includes(1)) continue;
+    let labelIndex = -1;
+    for (let i = Math.max(0, dayIndex - 3); i <= Math.min(lines.length - 1, dayIndex + 3); i++) {
+      if (/CAUSALE\s+(?:PRESENZE|PRESENZA)[\s/.-]*(?:ASSENZE|ASSENZA)|CALENDARIO\s+PRESENZE/i.test(normalizzaTesto(lines[i].text))) {
+        labelIndex = i; break;
+      }
+    }
+    if (labelIndex < 0) continue;
+    const totalCell = lines[dayIndex].cells.find(cell => /TOTALE/i.test(normalizzaTesto(cell.str)));
+    const totalX = totalCell ? cellCenter(totalCell) : Math.max(...dayCells.map(cellCenter)) + 32;
+    let end = lines.length;
+    for (let i = Math.max(dayIndex, labelIndex) + 1; i < lines.length; i++) {
+      if (/^(?:CONTRIBUTI|IRPEF|TFR|PROGRESSIVI|TOTALI|RIEPILOGO|CONGUAGLIO)\b/i.test(normalizzaTesto(lines[i].text))) {
+        end = i; break;
+      }
+    }
+    const unitText = [lines[dayIndex].text, lines[labelIndex].text].join(' ');
+    return {
+      start: Math.min(dayIndex, labelIndex),
+      bodyStart: Math.max(dayIndex, labelIndex) + 1,
+      end,
+      dayCells: dayCells.map(cell => ({ day: itNum(cell.str), x: cellCenter(cell) })),
+      totalX,
+      unit: /\b(?:ORE|ORA)\b/i.test(unitText) ? 'ORE' : (/\b(?:GG|GIORNI)\b/i.test(unitText) ? 'GIORNI' : 'ORE'),
+    };
+  }
+  return null;
+}
+
+function attendanceKind(description) {
+  if (/STRAORDINAR|SUPPLEMENTAR|LAV\.?\s*SUPPL/i.test(description)) return 'ore-extra';
+  if (/FERIE|PERMESS|ROL|BANCA\s+OR/i.test(description)) return 'assenza';
+  if (/FESTIV/i.test(description)) return 'festivita';
+  if (/ORDINAR/i.test(description)) return 'ordinario';
+  if (/MALATT|MATERNIT|PATERNIT|CONGED|INFORTUN/i.test(description)) return 'assenza-tutelata';
+  return 'altro';
+}
+
+function extractAttendanceTables(rec, allLines) {
+  rec.presenze = rec.presenze || { righe: [] };
+  for (const lines of allLines) {
+    const table = attendanceTableForLines(lines);
+    if (!table) continue;
+    for (let i = table.bodyStart; i < table.end; i++) {
+      const firstDayX = table.dayCells[0].x;
+      const description = normalizzaTesto(lines[i].cells
+        .filter(cell => cellCenter(cell) < firstDayX - 4 && /[A-Za-zÀ-ù]{2}/.test(cell.str))
+        .map(cell => cell.str).join(' '));
+      if (!description || /CAUSALE\s+PRESENZE/i.test(description)) continue;
+      const dayValues = [];
+      for (const cell of lines[i].cells) {
+        const center = cellCenter(cell);
+        if (center < firstDayX - 8 || center >= table.totalX - 12) continue;
+        let nearest = null, distance = 10;
+        for (const column of table.dayCells) {
+          const dx = Math.abs(center - column.x);
+          if (dx < distance) { nearest = column; distance = dx; }
+        }
+        if (!nearest) continue;
+        const text = normalizzaTesto(cell.str);
+        if (UNIT_RE.test(text)) continue;
+        const value = itNum(text);
+        if (value != null || /[A-Za-z]/.test(text)) dayValues.push({ giorno: nearest.day, valore: value != null ? value : text });
+      }
+      const totals = numericCells(lines[i]).filter(cell => cellCenter(cell) >= table.totalX - 12);
+      const total = totals.length ? itNum(totals[totals.length - 1].str) : null;
+      if (!dayValues.length && total == null) continue;
+      rec.presenze.righe.push({
+        descrizione: description,
+        tipo: attendanceKind(description),
+        totale: total,
+        unita: table.unit,
+        giorni: dayValues,
+        meta: { source: 'tabella-presenze', confidence: total != null ? .94 : .78, visual: visualEvidence(lines[i]) },
+      });
+      if (/ORDINAR/i.test(description) && total != null && rec.orario.oreOrdinarie == null) rec.orario.oreOrdinarie = total;
+    }
+  }
+}
+
 /*
  * Recupera righe economiche anche quando il cedolino non espone una vera tabella
  * codice/descrizione/base/quantità. È il caso tipico di NoiPA, lavoro domestico,
@@ -924,7 +1018,10 @@ function extractLabeledFinancialLines(rec, allLines) {
   const excluded = /\b(?:TOTALE|NETTO|IMPONIBILE|DETRAZION|ALIQUOTA|RESIDUO|MATURAT|GODUT|SALDO|PROGRESSIV|ELEMENTI\s+RETRIBUTIVI|RETRIBUZIONE\s+UTILE)\b/i;
   const deduction = /\b(?:TRATTENUT|RITENUT|CONTRIBUT|INPS|IVS|IRPEF|ADDIZIONAL|SINDACAL|CESSION|PIGNOR|PRESTITO|RECUPERO)\b/i;
   for (const lines of allLines) {
-    for (const line of lines) {
+    const attendance = attendanceTableForLines(lines);
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+      if (attendance && lineIndex >= attendance.start && lineIndex < attendance.end) continue;
       const text = normalizzaTesto(line.text);
       if (!economicLabel.test(text) || excluded.test(text)) continue;
       const values = numericCells(line).map(cell => ({ x: cellCenter(cell), value: itNum(cell.str) }))
@@ -936,7 +1033,7 @@ function extractLabeledFinancialLines(rec, allLines) {
         .map(cell => cell.str).join(' '));
       description = description.replace(/^\s*[A-Z0-9./_-]{1,12}\s+(?=[A-Za-zÀ-ù])/, '').trim();
       if (!description || !economicLabel.test(description)) continue;
-      if (/^(?:FERIE|PERMESSI|R\.?O\.?L\.?|EX\s*FEST)\s*\(?(?:ORE|GG|GIORNI)?\)?$/i.test(description) && values.length >= 4) continue;
+      if (/^(?:FERIE|PERMESSI|R\.?O\.?L\.?|EX\s*FEST)\s*\(?(?:ORE|GG|GIORNI)?\)?$/i.test(description)) continue;
       const amount = values[values.length - 1].value;
       if (Math.abs(amount) > 1000000) continue;
       const voice = { codice: '', descrizione: description, base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null };
@@ -967,26 +1064,37 @@ function extractContributionTables(rec, allLines) {
     if (start < 0) continue;
     let end = findLine(lines, /^(?:IRPEF|RITENUTE\s+FISCALI|TOTALI)\b/i, start + 1);
     if (end < 0) end = Math.min(lines.length, start + 18);
-    for (let i = start + 1; i < end; i++) {
-      const textCells = lines[i].cells.filter(cell => /[A-Za-zÀ-ù]{2}/.test(cell.str) && !/IMPONIBILE|TOTALE|ALIQUOTA|IMPORTO|DESCRIZIONE/i.test(normalizzaTesto(cell.str)));
-      for (const descriptionCell of textCells) {
-        const numbers = lines[i].cells
-          .filter(cell => cell.x > descriptionCell.x + descriptionCell.w - 2)
-          .map(cell => ({ cell, value: itNum(cell.str) }))
-          .filter(item => item.value != null);
-        if (numbers.length < 2) continue;
-        const values = numbers.map(item => item.value);
-        addSyntheticVoice(rec, {
-          codice: '',
-          descrizione: normalizzaTesto(descriptionCell.str),
-          base: values.length >= 3 ? values[values.length - 2] : values[0],
-          rifQta: values.length >= 3 ? values[values.length - 3] : null,
-          rifUnita: values.length >= 3 ? '%' : '',
-          trattenuta: values[values.length - 1],
-          competenza: null,
-          meta: { source: 'coordinate', confidence: .84, visual: visualEvidence(lines[i]) },
-        });
+    const header = lines.slice(start, Math.min(end, start + 3))
+      .find(line => /DESCRIZIONE.*CONTRIBUTO.*ALIQ/i.test(normalizzaTesto(line.text))) || lines[start];
+    const descHead = header.cells.find(cell => /DESCRIZIONE/i.test(normalizzaTesto(cell.str)));
+    const aliqHead = header.cells.find(cell => cell.x > (descHead ? descHead.x : 0) && /ALIQ/i.test(normalizzaTesto(cell.str)));
+    const baseHead = header.cells.find(cell => cell.x > (aliqHead ? aliqHead.x : 0) && /IMPONIBILE/i.test(normalizzaTesto(cell.str)));
+    const amountHead = header.cells.find(cell => cell.x > (baseHead ? baseHead.x : 0) && /IMPORTO/i.test(normalizzaTesto(cell.str)));
+    if (!descHead || !aliqHead || !baseHead || !amountHead) continue;
+    const heads = { desc: descHead.x, aliq: cellCenter(aliqHead), base: cellCenter(baseHead), amount: cellCenter(amountHead) };
+    const closestNumber = (line, x, max = 34) => {
+      let best = null, distance = max;
+      for (const cell of numericCells(line)) {
+        const dx = Math.abs(cellCenter(cell) - x);
+        if (dx < distance) { best = itNum(cell.str); distance = dx; }
       }
+      return best;
+    };
+    for (let i = start + 1; i < end; i++) {
+      const description = normalizzaTesto(lines[i].cells
+        .filter(cell => cellCenter(cell) >= heads.desc - 12 && cellCenter(cell) < heads.aliq - 8 && /[A-Za-zÀ-ù]/.test(cell.str))
+        .map(cell => cell.str).join(' '));
+      if (!description) continue;
+      const aliquota = closestNumber(lines[i], heads.aliq);
+      const base = closestNumber(lines[i], heads.base);
+      const amount = closestNumber(lines[i], heads.amount);
+      if (amount == null) continue;
+      addSyntheticVoice(rec, {
+        codice: '', descrizione: description,
+        base, rifQta: aliquota, rifUnita: aliquota != null ? '%' : '',
+        trattenuta: Math.abs(amount), competenza: null,
+        meta: { source: 'tabella-contributi', confidence: base != null && aliquota != null ? .9 : .8, visual: visualEvidence(lines[i]) },
+      });
     }
   }
 }
@@ -1180,14 +1288,20 @@ function extractProgressivesAndTfr(rec, allLines) {
 
 function headerMapForRatei(line) {
   const map = {};
-  for (const cell of line.cells) {
-    const text = normalizzaTesto(cell.str);
-    if (/RESIDUO\s*(?:A\.?\s*P\.?|PRECEDENTE)|ANNO\s+PREC/i.test(text)) map.residuoAp = cellCenter(cell);
-    else if (/MATURAT/i.test(text)) map.maturato = cellCenter(cell);
-    else if (/GODUT[IO]\s*(?:A\.?\s*C\.?|CORRENTE)/i.test(text)) map.goduto = cellCenter(cell);
-    else if (/GODUT[IO]\s*(?:A\.?\s*P\.?|PRECEDENTE)/i.test(text)) map.godutoAp = cellCenter(cell);
-    else if (/SALDO|RIMANGONO|RESIDUO\s*FINALE/i.test(text)) map.saldo = cellCenter(cell);
-    else if (/GODUT[IO]|FRUIT[IO]/i.test(text)) map.goduto = cellCenter(cell);
+  const definitions = [
+    ['residuoAp', /RESIDUO\s*(?:A\.?\s*P\.?|PRECEDENTE)|ANNO\s+PREC/i],
+    ['maturato', /MATURAT/i],
+    ['godutoAp', /GODUT[IO]\s*(?:A\.?\s*P\.?|PRECEDENTE)/i],
+    ['goduto', /GODUT[IO]\s*(?:A\.?\s*C\.?|CORRENTE)/i],
+    ['saldo', /SALDO|RIMANGONO|RESIDUO\s*FINALE/i],
+  ];
+  for (const [key, regex] of definitions) {
+    const span = matchingLabelSpans(line, regex)[0];
+    if (span) map[key] = span.bbox.x + span.bbox.w / 2;
+  }
+  if (map.goduto == null && map.godutoAp == null) {
+    const generic = matchingLabelSpans(line, /GODUT[IO]|FRUIT[IO]/i)[0];
+    if (generic) map.goduto = generic.bbox.x + generic.bbox.w / 2;
   }
   return map;
 }
@@ -1202,12 +1316,18 @@ function extractAccruals(rec, allLines) {
       if (Object.keys(candidate).length >= Object.keys(headers).length) headers = candidate;
     }
     for (let i = section + 1; i < Math.min(lines.length, section + 24); i++) {
+      if (/^(?:VOCE\b|VOCI\b|CAUSALE\s+PRESENZE|CONTRIBUTI\b|IRPEF\b|TFR\b)/i.test(normalizzaTesto(lines[i].text))) break;
       const first = lines[i].cells[0];
       if (!first || !/^(FERIE|PERMESSI|ROL|R\.O\.L\.|EX\s*FEST)/i.test(normalizzaTesto(first.str))) continue;
       const key = /FERIE/i.test(first.str) ? 'ferie' : (/EX\s*FEST/i.test(first.str) ? 'exFestivita' : 'permessi');
-      const result = { residuoAp: null, maturato: null, goduto: null, saldo: null, unita: /\bGG\b|GIORNI/i.test(lines[i].text) ? 'GG' : (/\bORE\b/i.test(lines[i].text) ? 'ORE' : '') };
+      const result = { residuoAp: null, maturato: null, goduto: null, godutoAp: null, saldo: null, unita: /\bGG\b|GIORNI/i.test(lines[i].text) ? 'GG' : (/\bORE\b/i.test(lines[i].text) ? 'ORE' : '') };
       if (Object.keys(headers).length >= 3) {
-        for (const cell of numericCells(lines[i])) {
+        const rowCells = [...numericCells(lines[i])];
+        const next = lines[i + 1];
+        if (next && Math.abs(lines[i].y - next.y) <= 8 && !/^(?:FERIE|PERMESSI|ROL|R\.O\.L\.|EX\s*FEST)/i.test(normalizzaTesto((next.cells[0] || {}).str))) {
+          rowCells.push(...numericCells(next).filter(cell => cellCenter(cell) >= Math.min(...Object.values(headers)) - 18));
+        }
+        for (const cell of rowCells) {
           let bestKey = null;
           let distance = 42;
           for (const [headerKey, x] of Object.entries(headers)) {
@@ -1576,6 +1696,7 @@ function ripulisciRecord(rec) {
   rec.meta.candidates = rec.meta.candidates || {};
   rec.meta.reconciliation = rec.meta.reconciliation || {};
   rec.meta.pageSizes = rec.meta.pageSizes || [];
+  rec.presenze = rec.presenze || { righe: [] };
   ripulisciVoci(rec);
   annotateFields(rec);
   rec.meta.consistency = valutaCoerenza(rec);
@@ -1615,6 +1736,7 @@ function parsePdfPages(pages, options = {}) {
   extractIdentity(rec, allLines, fullText);
   extractElements(rec, allLines);
   extractVoices(rec, allLines, warnings);
+  extractAttendanceTables(rec, allLines);
   extractLabeledFinancialLines(rec, allLines);
   extractContributionTables(rec, allLines);
   extractFiscalSummary(rec, allLines);
