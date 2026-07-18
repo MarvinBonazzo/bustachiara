@@ -433,5 +433,254 @@
       { "match": "Buoni pasto", "side": "competenza", "amount": 88 }
     ],
     "quadrature": true
+  },
+  {
+    "id": "layout-coordinate-lul-ebr-classico",
+    "family": "Layout coordinate LUL classico EBR",
+    "type": "pages",
+    "pages": [
+      [
+        [800, [[30, "LIBRO UNICO DEL LAVORO"], [410, "PERIODO PAGA OTTOBRE 2026"]]],
+        [700, [[30, "COD."], [70, "DESCRIZIONE"], [280, "ORE/GG"], [340, "%"], [390, "DATO BASE"], [470, "RITENUTE"], [550, "COMPETENZE"]]],
+        [680, [[30, "2"], [70, "COMPETENZE MESE"], [390, "1.600,00"], [550, "1.600,00"]]],
+        [660, [[30, "35"], [70, "PERM.EX.FEST.GODUTI"], [280, "8,00"], [390, "10,00"], [550, "80,00"]]],
+        [640, [[30, "3"], [70, "DETRAZ. ORE ASSENZA"], [280, "8,00"], [390, "10,00"], [470, "80,00"]]],
+        [620, [[30, "31"], [70, "FERIE GODUTE"], [280, "16,00"], [390, "50,00"], [550, "800,00"]]],
+        [600, [[30, "4"], [70, "DETRAZ.GG ASSENZA"], [280, "16,00"], [390, "50,00"], [470, "800,00"]]],
+        [580, [[30, "1"], [70, "CONTRIBUTO FAP"], [340, "9,1900"], [390, "1.600,00"], [470, "147,04"]]],
+        [560, [[30, "298"], [70, "EBTU TURISMO"], [340, "0,2000"], [390, "1.500,00"], [470, "3,00"]]],
+        [300, [[410, "TOTALE COMPETENZE"], [550, "2.480,00"]]],
+        [280, [[410, "TOTALE RITENUTE"], [550, "1.030,04"]]],
+        [260, [[440, "NETTO IN BUSTA"], [550, "1.449,96"]]]
+      ]
+    ],
+    "expected": {
+      "meta.settore": "privato-lul",
+      "periodo.mese": 10,
+      "periodo.anno": 2026,
+      "totali.competenze": 2480,
+      "totali.trattenute": 1030.04,
+      "totali.netto": 1449.96
+    },
+    "expectedVoiceCount": 7,
+    "voices": [
+      { "match": "COMPETENZE MESE", "side": "competenza", "amount": 1600, "page": 0 },
+      { "match": "PERM.EX.FEST.GODUTI", "side": "competenza", "amount": 80 },
+      { "match": "DETRAZ. ORE ASSENZA", "side": "trattenuta", "amount": 80 },
+      { "match": "FERIE GODUTE", "side": "competenza", "amount": 800 },
+      { "match": "CONTRIBUTO FAP", "side": "trattenuta", "amount": 147.04 },
+      { "match": "EBTU TURISMO", "side": "trattenuta", "amount": 3 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "layout-coordinate-noipa-due-pagine",
+    "family": "Layout coordinate NoiPA su due pagine",
+    "type": "pages",
+    "pages": [
+      [
+        [800, [[30, "NOIPA CEDOLINO UNICO"], [430, "RATA OTTOBRE 2026"]]],
+        [700, [[30, "CODICE"], [80, "DESCRIZIONE"], [350, "BASE"], [500, "COMPETENZE FISSE"], [610, "TRATTENUTE"]]],
+        [680, [[30, "100"], [80, "STIPENDIO TABELLARE"], [500, "1.950,00"]]],
+        [660, [[30, "110"], [80, "INDENNITA DI AMMINISTRAZIONE"], [500, "300,00"]]],
+        [640, [[30, "900"], [80, "RITENUTA PREVIDENZIALE INPDAP"], [610, "220,00"]]]
+      ],
+      [
+        [800, [[30, "NOIPA - DETTAGLIO COMPETENZE E RITENUTE"], [430, "OTTOBRE 2026"]]],
+        [700, [[30, "CODICE"], [80, "DESCRIZIONE"], [350, "BASE"], [500, "COMPETENZE ACCESSORIE"], [610, "TRATTENUTE"]]],
+        [680, [[30, "210"], [80, "STRAORDINARIO DIURNO"], [500, "150,00"]]],
+        [660, [[30, "910"], [80, "RITENUTA IRPEF"], [610, "350,00"]]],
+        [640, [[30, "920"], [80, "ADDIZIONALE REGIONALE"], [610, "30,00"]]],
+        [300, [[440, "TOTALE COMPETENZE"], [550, "2.400,00"]]],
+        [280, [[440, "TOTALE TRATTENUTE"], [550, "600,00"]]],
+        [260, [[460, "IMPORTO NETTO"], [550, "1.800,00"]]]
+      ]
+    ],
+    "expected": {
+      "meta.software": "NoiPA",
+      "meta.settore": "pubblico-noipa",
+      "periodo.mese": 10,
+      "periodo.anno": 2026,
+      "totali.competenze": 2400,
+      "totali.trattenute": 600,
+      "totali.netto": 1800
+    },
+    "expectedVoiceCount": 6,
+    "voices": [
+      { "match": "STIPENDIO TABELLARE", "side": "competenza", "amount": 1950, "page": 0 },
+      { "match": "INDENNITA DI AMMINISTRAZIONE", "side": "competenza", "amount": 300 },
+      { "match": "INPDAP", "side": "trattenuta", "amount": 220 },
+      { "match": "STRAORDINARIO DIURNO", "side": "competenza", "amount": 150, "page": 1 },
+      { "match": "RITENUTA IRPEF", "side": "trattenuta", "amount": 350 },
+      { "match": "ADDIZIONALE REGIONALE", "side": "trattenuta", "amount": 30 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "layout-coordinate-teamsystem-due-pagine",
+    "family": "Layout coordinate TeamSystem LYNFA multisezione",
+    "type": "pages",
+    "pages": [
+      [
+        [800, [[30, "TEAMSYSTEM LYNFA - LIBRO UNICO DEL LAVORO"], [430, "PERIODO 10/2026"]]],
+        [700, [[30, "CODICE"], [80, "DESCRIZIONE"], [320, "ORE/GG"], [390, "DATO BASE"], [510, "COMPETENZE"], [610, "TRATTENUTE"]]],
+        [680, [[30, "0100"], [80, "PAGA ORDINARIA"], [320, "168,00"], [390, "10,00"], [510, "1.680,00"]]],
+        [660, [[30, "0110"], [80, "SCATTO ANZIANITA"], [390, "55,00"], [510, "55,00"]]],
+        [640, [[30, "0210"], [80, "INDENNITA TURNO"], [320, "9,00"], [390, "10,00"], [510, "90,00"]]],
+        [620, [[30, "0900"], [80, "CONTRIBUTO INPS"], [390, "1.825,00"], [610, "167,75"]]]
+      ],
+      [
+        [800, [[30, "TEAMSYSTEM LYNFA - SEZIONE FISCALE"], [430, "OTTOBRE 2026"]]],
+        [700, [[30, "CODICE"], [80, "DESCRIZIONE"], [390, "DATO BASE"], [510, "COMPETENZE"], [610, "TRATTENUTE"]]],
+        [680, [[30, "0910"], [80, "RITENUTA IRPEF NETTA"], [390, "1.657,25"], [610, "310,00"]]],
+        [660, [[30, "0920"], [80, "ADDIZIONALE REGIONALE RATA"], [390, "2025"], [610, "25,00"]]],
+        [640, [[30, "0930"], [80, "ADDIZIONALE COMUNALE RATA"], [390, "2025"], [610, "12,00"]]],
+        [300, [[440, "TOTALE COMPETENZE"], [550, "1.825,00"]]],
+        [280, [[440, "TOTALE TRATTENUTE"], [550, "514,75"]]],
+        [260, [[460, "NETTO DEL MESE"], [550, "1.310,25"]]]
+      ]
+    ],
+    "expected": {
+      "meta.software": "TeamSystem / LYNFA",
+      "meta.settore": "privato-lul",
+      "periodo.mese": 10,
+      "periodo.anno": 2026,
+      "totali.competenze": 1825,
+      "totali.trattenute": 514.75,
+      "totali.netto": 1310.25
+    },
+    "expectedVoiceCount": 7,
+    "voices": [
+      { "match": "PAGA ORDINARIA", "side": "competenza", "amount": 1680, "page": 0 },
+      { "match": "SCATTO ANZIANITA", "side": "competenza", "amount": 55 },
+      { "match": "INDENNITA TURNO", "side": "competenza", "amount": 90 },
+      { "match": "CONTRIBUTO INPS", "side": "trattenuta", "amount": 167.75 },
+      { "match": "RITENUTA IRPEF NETTA", "side": "trattenuta", "amount": 310, "page": 1 },
+      { "match": "ADDIZIONALE REGIONALE RATA", "side": "trattenuta", "amount": 25 },
+      { "match": "ADDIZIONALE COMUNALE RATA", "side": "trattenuta", "amount": 12 }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "layout-coordinate-lavoro-domestico",
+    "family": "Layout coordinate lavoro domestico Tempo Base Figurativo",
+    "type": "pages",
+    "pages": [
+      [
+        [800, [[30, "CEDOLINO PAGA (MENSILE) - LAVORO DOMESTICO"], [430, "MESE OTTOBRE 2026"]]],
+        [700, [[30, "VOCE"], [80, "DESCRIZIONE"], [290, "TEMPO"], [380, "BASE"], [455, "FIGURATIVO"], [540, "COMPETENZE"], [640, "TRATTENUTE"]]],
+        [680, [[30, "001"], [80, "RETRIBUZIONE MENSILE DOMESTICO"], [290, "MENSILE"], [380, "1.200,00"], [455, "NO"], [540, "1.200,00"]]],
+        [660, [[30, "002"], [80, "INDENNITA VITTO E ALLOGGIO"], [290, "26 GG"], [380, "120,00"], [455, "SI"], [540, "120,00"]]],
+        [640, [[30, "900"], [80, "CONTRIBUTI INPS LAVORO DOMESTICO"], [380, "1.320,00"], [455, "NO"], [640, "120,00"]]],
+        [620, [[30, "910"], [80, "CONTRIBUTO CAS.SA.COLF"], [455, "NO"], [640, "6,50"]]],
+        [300, [[440, "TOTALE COMPETENZE"], [550, "1.320,00"]]],
+        [280, [[440, "TOTALE TRATTENUTE"], [550, "126,50"]]],
+        [260, [[460, "RETRIBUZIONE NETTA"], [550, "1.193,50"]]]
+      ]
+    ],
+    "expected": {
+      "meta.software": "Lavoro domestico",
+      "meta.settore": "domestico",
+      "periodo.mese": 10,
+      "periodo.anno": 2026,
+      "totali.competenze": 1320,
+      "totali.trattenute": 126.5,
+      "totali.netto": 1193.5
+    },
+    "expectedVoiceCount": 4,
+    "voices": [
+      {
+        "match": "RETRIBUZIONE MENSILE DOMESTICO",
+        "side": "competenza",
+        "amount": 1200,
+        "page": 0,
+        "fields": {
+          "descrizione": "RETRIBUZIONE MENSILE DOMESTICO",
+          "rifQta": null,
+          "meta.domesticColumns.tempo.raw": "MENSILE",
+          "meta.domesticColumns.tempo.periodicita": "mensile",
+          "meta.domesticColumns.figurativo.raw": "NO",
+          "meta.domesticColumns.figurativo.valore": false
+        }
+      },
+      {
+        "match": "INDENNITA VITTO E ALLOGGIO",
+        "side": "competenza",
+        "amount": 120,
+        "fields": {
+          "descrizione": "INDENNITA VITTO E ALLOGGIO",
+          "rifQta": null,
+          "meta.domesticColumns.tempo.raw": "26 GG",
+          "meta.domesticColumns.tempo.quantita": 26,
+          "meta.domesticColumns.tempo.unita": "GIORNI",
+          "meta.domesticColumns.figurativo.raw": "SI",
+          "meta.domesticColumns.figurativo.valore": true
+        }
+      },
+      {
+        "match": "CONTRIBUTI INPS LAVORO DOMESTICO",
+        "side": "trattenuta",
+        "amount": 120,
+        "fields": {
+          "descrizione": "CONTRIBUTI INPS LAVORO DOMESTICO",
+          "meta.domesticColumns.figurativo.valore": false
+        }
+      },
+      {
+        "match": "CAS.SA.COLF",
+        "side": "trattenuta",
+        "amount": 6.5,
+        "fields": {
+          "descrizione": "CONTRIBUTO CAS.SA.COLF",
+          "meta.domesticColumns.figurativo.valore": false
+        }
+      }
+    ],
+    "quadrature": true
+  },
+  {
+    "id": "layout-coordinate-cassa-edile-due-sezioni",
+    "family": "Layout coordinate Cassa Edile multisezione",
+    "type": "pages",
+    "pages": [
+      [
+        [800, [[30, "PROSPETTO PAGA EDILIZIA"], [430, "PERIODO OTTOBRE 2026"]]],
+        [780, [[30, "CASSA EDILE - CODICE CNEL F012"]]],
+        [700, [[30, "COD."], [80, "DESCRIZIONE"], [320, "ORE/GG"], [390, "DATO BASE"], [510, "COMPETENZE"], [620, "TRATTENUTE"]]],
+        [680, [[30, "100"], [80, "RETRIBUZIONE ORDINARIA EDILE"], [320, "168,00"], [390, "11,00"], [510, "1.848,00"]]],
+        [660, [[30, "110"], [80, "ELEMENTO VARIABILE RETRIBUZIONE EVR"], [320, "168,00"], [390, "0,45"], [510, "75,60"]]]
+      ],
+      [
+        [800, [[30, "CASSA EDILE - ACCANTONAMENTI E CONTRIBUTI"], [430, "OTTOBRE 2026"]]],
+        [700, [[30, "COD."], [80, "DESCRIZIONE"], [390, "DATO BASE"], [510, "COMPETENZE"], [620, "TRATTENUTE"]]],
+        [680, [[30, "200"], [80, "ACCANTONAMENTO CASSA EDILE GNF"], [390, "1.923,60"], [510, "250,40"]]],
+        [660, [[30, "900"], [80, "CONTRIBUTO INPS"], [390, "1.923,60"], [620, "180,00"]]],
+        [640, [[30, "910"], [80, "CONTRIBUTO CASSA EDILE"], [390, "1.923,60"], [620, "40,00"]]],
+        [620, [[30, "920"], [80, "RITENUTA IRPEF"], [390, "1.743,60"], [620, "400,00"]]],
+        [300, [[440, "TOTALE COMPETENZE"], [550, "2.174,00"]]],
+        [280, [[440, "TOTALE TRATTENUTE"], [550, "620,00"]]],
+        [260, [[460, "NETTO A PAGARE"], [550, "1.554,00"]]]
+      ]
+    ],
+    "expected": {
+      "meta.software": "Cassa Edile / edilizia",
+      "meta.settore": "edilizia",
+      "periodo.mese": 10,
+      "periodo.anno": 2026,
+      "ccnl.cnel": "F012",
+      "totali.competenze": 2174,
+      "totali.trattenute": 620,
+      "totali.netto": 1554
+    },
+    "expectedVoiceCount": 6,
+    "voices": [
+      { "match": "RETRIBUZIONE ORDINARIA EDILE", "side": "competenza", "amount": 1848, "page": 0 },
+      { "match": "EVR", "side": "competenza", "amount": 75.6 },
+      { "match": "ACCANTONAMENTO CASSA EDILE GNF", "side": "competenza", "amount": 250.4, "page": 1 },
+      { "match": "CONTRIBUTO INPS", "side": "trattenuta", "amount": 180 },
+      { "match": "CONTRIBUTO CASSA EDILE", "side": "trattenuta", "amount": 40 },
+      { "match": "RITENUTA IRPEF", "side": "trattenuta", "amount": 400 }
+    ],
+    "quadrature": true
   }
 ]

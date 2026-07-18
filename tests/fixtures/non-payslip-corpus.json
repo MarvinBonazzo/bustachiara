@@ -1,0 +1,44 @@
+[
+  {
+    "id": "non-cedolino-certificazione-unica",
+    "document": "CU",
+    "desired": "reject",
+    "enforcement": "blocking",
+    "text": "CERTIFICAZIONE UNICA 2026 - REDDITI 2025\nDATI FISCALI DI ESEMPIO\nReddito imponibile 24.500,00\nRitenute IRPEF 4.200,00\nAddizionale regionale 180,00"
+  },
+  {
+    "id": "non-cedolino-modello-730",
+    "document": "730-3",
+    "desired": "reject",
+    "enforcement": "blocking",
+    "text": "MODELLO 730-3 2026 - PROSPETTO DI LIQUIDAZIONE\nCredito IRPEF 250,00\nDebito addizionale comunale 45,00\nRisultato della liquidazione 205,00"
+  },
+  {
+    "id": "non-cedolino-modello-f24",
+    "document": "F24",
+    "desired": "reject",
+    "enforcement": "blocking",
+    "text": "MODELLO F24 - SEZIONE ERARIO\nCodice tributo 1001\nImporti a debito versati 320,00\nSaldo finale 320,00"
+  },
+  {
+    "id": "non-cedolino-contratto-lavoro",
+    "document": "contratto di lavoro",
+    "desired": "reject",
+    "enforcement": "blocking",
+    "text": "CONTRATTO INDIVIDUALE DI LAVORO\nDecorrenza 01/10/2026\nRetribuzione annua lorda 28.000,00\nPeriodo di prova 60 giorni\nOrario settimanale 40 ore"
+  },
+  {
+    "id": "non-cedolino-prospetto-presenze",
+    "document": "prospetto presenze",
+    "desired": "reject",
+    "enforcement": "blocking",
+    "text": "PROSPETTO PRESENZE OTTOBRE 2026\nOre ordinarie 168,00\nFerie godute 8,00\nPermessi goduti 4,00\nTotale ore 180,00"
+  },
+  {
+    "id": "non-cedolino-pensione-inps",
+    "document": "cedolino pensione",
+    "desired": "reject",
+    "enforcement": "blocking",
+    "text": "CEDOLINO PENSIONE INPS OTTOBRE 2026\nPensione lorda 1.400,00\nRitenuta IRPEF 210,00\nAddizionale regionale 20,00\nImporto netto 1.170,00"
+  }
+]

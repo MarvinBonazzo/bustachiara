@@ -186,7 +186,7 @@ function openInfo(titolo, bodyHtml) {
   $('#popover-body').innerHTML = bodyHtml;
   $('#popover').hidden = false;
   document.body.classList.add('modal-open');
-  ['#topbar', '#tabs', 'main', 'footer'].forEach(s => {
+  ['#topbar', '#screen-nav', '#tabs', 'main', 'footer'].forEach(s => {
     const el = $(s); if (!el) return;
     el.setAttribute('aria-hidden', 'true');
     el.inert = true;
@@ -197,7 +197,7 @@ function closeInfo() {
   if ($('#popover').hidden) return;
   $('#popover').hidden = true;
   document.body.classList.remove('modal-open');
-  ['#topbar', '#tabs', 'main', 'footer'].forEach(s => {
+  ['#topbar', '#screen-nav', '#tabs', 'main', 'footer'].forEach(s => {
     const el = $(s); if (!el) return;
     el.removeAttribute('aria-hidden');
     el.inert = false;
@@ -208,7 +208,7 @@ function iBtn(key) { return `<button class="ibtn" data-info="${esc(key)}" title=
 let detailVoci = []; // voci del record mostrato in Dettaglio, per i popup
 function vociInfoHtml(v) {
   const s = spiegaVoce(v);
-  return `<p>${esc(spiegazioneBreveVoce(v, s))}</p>
+  return `<p>${esc(spiegazioneCompletaVoce(v, s))}</p>
     ${controlloUtileVoce(v, s) ? `<p><b>Controllo utile:</b> ${esc(controlloUtileVoce(v, s))}</p>` : ''}
     ${fontiHTML(s.fonti)}`;
 }
@@ -217,14 +217,19 @@ function vociInfoHtml(v) {
 function spiegaVoce(v) {
   return classificaVoce(v);
 }
-function spiegazioneBreveVoce(v, spiegazione = spiegaVoce(v)) {
+function spiegazioneCompletaVoce(v, spiegazione = spiegaVoce(v)) {
   const fallback = spiegazione.cat === 'trattenuta'
     ? 'Questa somma viene tolta dal totale prima di arrivare al netto.'
     : spiegazione.cat === 'competenza'
       ? 'Questa somma viene aggiunta alle competenze del mese.'
       : 'È un dato usato per spiegare o calcolare il cedolino; da solo non cambia il netto.';
-  let text = primaFrase(String(spiegazione.cosa || '').replace(/\s*Riconoscimento offline[\s\S]*$/i, '').trim()) || fallback;
+  let text = String(spiegazione.cosa || '').replace(/\s*Riconoscimento offline[\s\S]*$/i, '').trim() || fallback;
   text = text.replace(/\bcausale\b/gi, 'voce').replace(/\bgestionale\b/gi, 'software paghe');
+  return text;
+}
+function spiegazioneBreveVoce(v, spiegazione = spiegaVoce(v)) {
+  const full = spiegazioneCompletaVoce(v, spiegazione);
+  const text = primaFrase(full) || full;
   return text.length > 230 ? text.slice(0, 227).replace(/\s+\S*$/, '') + '…' : text;
 }
 function controlloUtileVoce(v, spiegazione = spiegaVoce(v)) {
@@ -240,7 +245,80 @@ function controlloUtileVoce(v, spiegazione = spiegaVoce(v)) {
 let currentDetailId = null;
 let draft = null; // { record, warnings } in verifica
 const SourcePreviewCache = new Map(); // anteprime solo in RAM: mai nel localStorage
-function showView(name) {
+const APP_VIEWS = new Set(['importa', 'verifica', 'riassunto', 'dettaglio', 'guida', 'consigli', 'progetto', 'impostazioni']);
+const APP_HISTORY_STORAGE_PREFIX = 'bustachiara.history.v1.';
+let activeView = null;
+let historyPosition = 0;
+let historyFurthest = 0;
+let historyTrailId = null;
+
+function newHistoryTrailId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `bc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isAppHistoryState(state) {
+  return !!state && state.bustaChiara === true && Number.isInteger(state.position) && state.position >= 0;
+}
+
+function readHistoryLedger(trailId) {
+  if (!trailId || typeof sessionStorage === 'undefined') return null;
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(APP_HISTORY_STORAGE_PREFIX + trailId) || 'null');
+    return parsed && Number.isInteger(parsed.furthest) && parsed.furthest >= 0 ? parsed : null;
+  } catch (error) { return null; }
+}
+
+function persistHistoryLedger() {
+  if (!historyTrailId || typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(APP_HISTORY_STORAGE_PREFIX + historyTrailId, JSON.stringify({
+      furthest: historyFurthest,
+      current: historyPosition,
+    }));
+  } catch (error) { /* sessionStorage non disponibile: resta attiva la cronologia della sessione corrente */ }
+}
+
+function restoreHistoryEntry(state = history.state) {
+  if (!isAppHistoryState(state)) {
+    historyTrailId = newHistoryTrailId();
+    historyPosition = 0;
+    historyFurthest = 0;
+    persistHistoryLedger();
+    updateHistoryButtons();
+    return null;
+  }
+  historyTrailId = typeof state.trailId === 'string' && state.trailId ? state.trailId : (historyTrailId || newHistoryTrailId());
+  historyPosition = state.position;
+  const ledger = readHistoryLedger(historyTrailId);
+  historyFurthest = Math.max(historyPosition, ledger ? ledger.furthest : historyPosition);
+  persistHistoryLedger();
+  updateHistoryButtons();
+  return { ...state, trailId: historyTrailId };
+}
+
+function routeRecordId(name, requestedId) {
+  if (requestedId) return requestedId;
+  if (name === 'verifica' && draft && draft.record) return draft.record.id || null;
+  if (name === 'riassunto' || name === 'dettaglio') return currentDetailId || (recSorted().slice(-1)[0] || {}).id || null;
+  return null;
+}
+
+function routeUrl(name) {
+  return `#${name}`;
+}
+
+function updateHistoryButtons() {
+  const back = $('#nav-back'), forward = $('#nav-forward');
+  if (back) back.disabled = historyPosition <= 0;
+  if (forward) forward.disabled = historyPosition >= historyFurthest;
+}
+
+function showView(name, options = {}) {
+  if (!APP_VIEWS.has(name)) name = 'importa';
+  if (!historyTrailId) restoreHistoryEntry();
+  const recordId = routeRecordId(name, options.recordId);
+  const historyMode = options.historyMode || 'push';
   $$('.view').forEach(v => v.classList.remove('active'));
   const el = $('#view-' + name); if (el) el.classList.add('active');
   $$('#tabs .tab').forEach(b => {
@@ -249,17 +327,84 @@ function showView(name) {
     if (active) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   });
+  const sameRoute = activeView === name && ((history.state && history.state.recordId) || null) === recordId;
+  activeView = name;
+  const state = { bustaChiara: true, trailId: historyTrailId, view: name, recordId, position: historyPosition };
+  try {
+    if (historyMode === 'replace' || (historyMode === 'push' && sameRoute)) {
+      history.replaceState(state, '', routeUrl(name));
+      persistHistoryLedger();
+    } else if (historyMode === 'push') {
+      const nextPosition = historyPosition + 1;
+      state.position = nextPosition;
+      history.pushState(state, '', routeUrl(name));
+      historyPosition = nextPosition;
+      historyFurthest = nextPosition; // pushState elimina le eventuali schermate "Avanti" dell'app
+      persistHistoryLedger();
+    }
+  } catch (error) { /* file locale o browser senza History API: le schede continuano a funzionare */ }
+  updateHistoryButtons();
   window.scrollTo({ top: 0 });
 }
+
+function renderRoute(name, recordId) {
+  if (name === 'verifica') {
+    if (!draft) {
+      const saved = Store.data.records.find(record => record.id === recordId);
+      if (!saved) return false;
+      draft = {
+        record: JSON.parse(JSON.stringify(saved)),
+        warnings: ['Stai modificando una busta già salvata.'],
+        previewPages: SourcePreviewCache.get(saved.id) || [],
+        activeSource: null,
+      };
+    }
+    renderVerifica();
+  } else if (name === 'dettaglio') renderDettaglio(recordId || routeRecordId(name));
+  else if (name === 'riassunto') renderRiassunto(recordId || routeRecordId(name));
+  else if (name === 'importa') renderImporta();
+  else if (name === 'consigli') renderConsigli();
+  else if (name === 'guida') renderGuida();
+  else if (name === 'progetto') renderProgetto();
+  else if (name === 'impostazioni') renderImpostazioni();
+  return true;
+}
+
+function navigateTo(name, recordId = null) {
+  if (!APP_VIEWS.has(name)) name = 'importa';
+  if (!renderRoute(name, recordId)) {
+    name = Store.data.records.length ? 'riassunto' : 'importa';
+    recordId = routeRecordId(name);
+    renderRoute(name, recordId);
+  }
+  showView(name, { recordId });
+}
+
+function handleHistoryPopState(event) {
+  const state = event.state;
+  if (!isAppHistoryState(state)) {
+    // La History API non espone eventuali pagine avanti/indietro estranee all'app:
+    // i pulsanti BustaChiara promettono quindi soltanto schermate registrate dall'app.
+    historyPosition = 0;
+    historyFurthest = 0;
+    updateHistoryButtons();
+    return;
+  }
+  closeInfo();
+  const restored = restoreHistoryEntry(state);
+  let name = APP_VIEWS.has(restored.view) ? restored.view : 'importa';
+  let recordId = restored.recordId || null;
+  if (!renderRoute(name, recordId)) {
+    name = Store.data.records.length ? 'riassunto' : 'importa';
+    recordId = routeRecordId(name);
+    renderRoute(name, recordId);
+  }
+  showView(name, { historyMode: 'none', recordId });
+}
+
 $('#tabs').addEventListener('click', (e) => {
   const b = e.target.closest('.tab'); if (!b) return;
-  const v = b.dataset.view;
-  // le viste dipendenti dai dati vengono ridisegnate a ogni apertura
-  if (v === 'dettaglio') renderDettaglio(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
-  else if (v === 'riassunto') renderRiassunto(currentDetailId || (recSorted().slice(-1)[0] || {}).id);
-  else if (v === 'importa') renderImporta();
-  else if (v === 'consigli') renderConsigli();
-  showView(v);
+  navigateTo(b.dataset.view);
 });
 
 /* ============================================================
@@ -950,6 +1095,11 @@ function prepareRecord(record) {
 }
 
 function proponiDopoImport(record, warnings, previewPages = []) {
+  const classification = record && record.meta && record.meta.documentClassification;
+  if (classification && classification.inScope === false) {
+    openInfo('Questo non sembra un cedolino', `<p>Il file è stato riconosciuto come <b>${esc(classification.label)}</b>.</p><p>Per evitare risultati inventati, BustaChiara non lo analizzerà e non lo salverà.</p><p class="muted small">Puoi chiudere questo messaggio e scegliere una busta paga da lavoro dipendente.</p>`);
+    return;
+  }
   prepareRecord(record);
   rememberSourcePreview(record, previewPages);
   const period = record.periodo ? periodoLabel(record.periodo) : 'Periodo da controllare';
@@ -970,7 +1120,7 @@ function startVerifica(record, warnings, previewPages = []) {
   rememberSourcePreview(record, availablePreviews);
   draft = { record, warnings: warnings || [], previewPages: availablePreviews, activeSource: null };
   renderVerifica();
-  showView('verifica');
+  showView('verifica', { recordId: record.id });
 }
 const FIELD_GROUPS = [
   { titolo: 'Periodo e persone', fields: [
@@ -1146,7 +1296,7 @@ function renderVerifica() {
   });
   $('#btn-add-voce').addEventListener('click', () => { draft.record.voci.push({ codice: '', descrizione: '', base: null, rifQta: null, rifUnita: '', trattenuta: null, competenza: null }); renderVociEdit(); });
   $('#btn-salva').addEventListener('click', salvaDraft);
-  $('#btn-annulla').addEventListener('click', () => { draft = null; showView(Store.data.records.length ? 'dettaglio' : 'importa'); });
+  $('#btn-annulla').addEventListener('click', () => { draft = null; navigateTo(Store.data.records.length ? 'dettaglio' : 'importa'); });
   liveQuadratura();
 }
 function renderVociEdit() {
@@ -1307,13 +1457,13 @@ function renderDettaglio(id) {
   const r = Store.data.records.find(x => x.id === id);
   const el = $('#view-dettaglio');
   currentDetailId = id || null;
-  if (!r) { el.innerHTML = `<div class="card"><h2>Nessuna busta selezionata</h2><p class="muted">Importa una busta paga per vedere qui l’analisi completa.</p><div class="btnrow"><button class="primary" id="dt-go-import">Importa una busta</button></div></div>`; const b = $('#dt-go-import'); if (b) b.addEventListener('click', () => showView('importa')); return; }
+  if (!r) { el.innerHTML = `<div class="card"><h2>Nessuna busta selezionata</h2><p class="muted">Importa una busta paga per vedere qui l’analisi completa.</p><div class="btnrow"><button class="primary" id="dt-go-import">Importa una busta</button></div></div>`; const b = $('#dt-go-import'); if (b) b.addEventListener('click', () => navigateTo('importa')); return; }
   const ccnl = r.ccnlId ? ccnlById(r.ccnlId) : Parser.trovaCcnl(r, CCNL_DB, Store.data.customCcnl.map(reviveCustom));
   const findings = eseguiControlli(r, ccnl, Store.data.records);
   detailVoci = r.voci;
   renderDettaglioCompleto(el, r, ccnl, findings);
   const sel = $('#sel-periodo');
-  if (sel) sel.addEventListener('change', () => renderDettaglio(sel.value));
+  if (sel) sel.addEventListener('change', () => navigateTo('dettaglio', sel.value));
 }
 
 const LV_LABEL = { ok: 'OK', info: 'Info', warn: 'Verifica', alert: 'Anomalia' };
@@ -1540,7 +1690,7 @@ function renderRiassunto(id) {
   const el = $('#view-riassunto');
   if (!r) {
     el.innerHTML = '<div class="card"><h2>Nessuna busta paga</h2><p>Carica un documento dalla Home per vedere qui il riassunto.</p><div class="btnrow"><button class="primary" id="summary-home">Vai alla Home</button></div></div>';
-    const button = $('#summary-home'); if (button) button.addEventListener('click', () => showView('importa'));
+    const button = $('#summary-home'); if (button) button.addEventListener('click', () => navigateTo('importa'));
     return;
   }
   currentDetailId = r.id;
@@ -1549,7 +1699,7 @@ function renderRiassunto(id) {
     <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
     <div class="card"><h2>Dal lordo al netto</h2><p>Nel cedolino risultano <b>${fmtEur(r.totali.competenze)} €</b> di competenze, <b>${fmtEur(r.totali.trattenute)} €</b> di trattenute e <b>${fmtEur(r.totali.netto)} €</b> netti.</p>${flussoStipendioHTML(r)}</div>
     <div class="card"><h2>Riassunto dei dati</h2>${commentiSempliciHTML(r)}</div>`;
-  const select = $('#sel-riassunto'); if (select) select.addEventListener('change', () => renderRiassunto(select.value));
+  const select = $('#sel-riassunto'); if (select) select.addEventListener('change', () => navigateTo('riassunto', select.value));
 }
 
 function renderDettaglioCompleto(el, r, ccnl, findings) {
@@ -1835,7 +1985,7 @@ function renderProgetto() {
   </div>
   <div class="card"><h2>Privacy — come funziona davvero</h2>
     <p>Una busta paga contiene l’elenco più sensibile di informazioni che esista su di te: quanto guadagni, dove lavori, il tuo codice fiscale, i tuoi prestiti (cessioni del quinto), a volte perfino dati sulla salute (malattie, permessi 104). Caricarla su un servizio online — o incollarla in una chat con un’intelligenza artificiale — significa affidare tutto questo a un’azienda terza, alle sue policy e ai suoi archivi.</p>
-    <p>Questa pagina ha una <b>Content-Security-Policy</b> che vieta al browser qualunque connessione di rete: anche volendo, il codice non potrebbe inviare nulla. I motori PDF e OCR sono già inclusi nell’app e funzionano anche offline.</p>
+    <p>Il codice attuale <b>non invia il documento né i dati estratti</b>: PDF, immagini e analisi restano su questo dispositivo. La <b>Content-Security-Policy</b> blocca i servizi di terze parti, ma consente le risorse della stessa origine necessarie a caricare e aggiornare la PWA. I motori PDF e OCR sono inclusi nell’app e funzionano anche offline.</p>
     <p>I dati stanno nel <b>localStorage del browser</b> di questo dispositivo. Cancellando i dati di navigazione del sito si cancellano anche le buste archiviate: fai backup periodici dalla scheda <b>Backup</b>.</p>
     <p>Il file originale del PDF <b>non viene salvato</b>: conserviamo soltanto i dati estratti che confermi. L’anteprima usata durante la verifica rimane temporaneamente in memoria e viene eliminata quando esci dalla schermata.</p>
   </div>
@@ -1846,6 +1996,7 @@ function renderProgetto() {
     <p><b>Nessun interesse:</b> non c’è niente in vendita, nessun fondo o servizio da consigliarti, nessun dato da monetizzare.</p>
   </div>
   <div class="card"><h2>I limiti, dichiarati</h2>
+    <p><b>Le intelligenze artificiali possono sbagliare e anche BustaChiara può sbagliare.</b> Confronta sempre i dati estratti con il documento originale, soprattutto quando l’app indica un valore da controllare.</p>
     <p>BustaChiara è uno strumento informativo: non sostituisce sindacati, CAF, patronati o consulenti del lavoro — anzi, ti indica quando e come rivolgerti a loro. L’archivio interno copre i principali CCNL e le regole fiscali fino al 2026: per tutto il resto trovi i link alle fonti ufficiali e un editor per aggiungere il tuo contratto.</p>
   </div>`;
 }
@@ -2253,9 +2404,13 @@ async function installaApp() {
   Store.load();
 
   // controlli barra superiore
-  $('#progetto-btn').addEventListener('click', () => showView('progetto'));
+  $('#progetto-btn').addEventListener('click', () => navigateTo('progetto'));
   $('#install-btn').addEventListener('click', installaApp);
-  $('#privacy-badge').addEventListener('click', () => openInfo('100% privacy', '<p>PDF, foto e numeri vengono elaborati <b>interamente su questo dispositivo</b>. Non c’è un account e non c’è un server a cui inviare la busta paga.</p><p>La Content-Security-Policy blocca le connessioni esterne durante l’analisi. Il PDF originale non viene salvato; restano soltanto i dati che confermi.</p><p class="muted small">La cronologia è nella memoria di questo browser. Per non perderla, crea periodicamente un backup dalla sezione Backup.</p>'));
+  $('#privacy-badge').addEventListener('click', () => openInfo('100% privacy', '<p>Il codice attuale elabora PDF, foto e numeri <b>interamente su questo dispositivo</b> e non invia il documento né i dati estratti.</p><p>La Content-Security-Policy blocca i servizi di terze parti; permette soltanto le risorse della stessa origine necessarie a caricare e aggiornare la PWA. Il PDF originale non viene salvato: restano soltanto i dati che confermi.</p><p class="muted small">La cronologia è nella memoria di questo browser. Per non perderla, crea periodicamente un backup dalla sezione Backup.</p>'));
+  $('#nav-back').addEventListener('click', () => history.back());
+  $('#nav-forward').addEventListener('click', () => history.forward());
+  try { history.scrollRestoration = 'manual'; } catch (e) { /* browser datato */ }
+  window.addEventListener('popstate', handleHistoryPopState);
   aggiornaPulsanteInstallazione();
 
   // popover: apertura da qualsiasi "i" e chiusura
@@ -2310,5 +2465,10 @@ async function installaApp() {
     }
   } catch (e) { /* ambienti senza service worker */ }
   renderImporta(); renderConsigli(); renderGuida(); renderProgetto(); renderImpostazioni();
-  showView('importa');
+  const initialHistoryState = restoreHistoryEntry();
+  const requestedView = location.hash.replace(/^#/, '');
+  let initialView = APP_VIEWS.has(requestedView) && requestedView !== 'verifica' ? requestedView : 'importa';
+  const initialRecordId = initialHistoryState && initialHistoryState.view === initialView ? initialHistoryState.recordId || null : null;
+  if (!renderRoute(initialView, initialRecordId)) initialView = 'importa';
+  showView(initialView, { historyMode: 'replace', recordId: initialRecordId });
 })();

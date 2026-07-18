@@ -35,6 +35,9 @@ jobs:
       - name: Test payroll parser
         run: |
           node tests/parser.test.mjs
+          node tests/parser-matrix.test.mjs
+          node tests/non-payslip-gaps.test.mjs
+          node tests/data-explanations.test.mjs
           node tests/ai-ocr.test.mjs
           node tests/recognition.test.mjs
           node tests/ui-pwa.test.mjs

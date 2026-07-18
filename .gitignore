@@ -28,6 +28,21 @@ __pycache__/
 # File temporanei di ricerca e render locali
 /tmp/
 
+# Documenti salariali ed export locali: non devono finire in un repository pubblico
+*.pdf
+*.jpg
+*.jpeg
+*.heic
+*.webp
+*.tif
+*.tiff
+*.png
+!/pwa/icons/*.png
+bustachiara-backup-*.json
+bustachiara-fixtures-anonime-*.json
+/private/
+/exports/
+
 # Editors
 .vscode/
 .idea/
