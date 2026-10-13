@@ -12,13 +12,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node tests/parser.test.mjs
-      - run: node tests/parser-matrix.test.mjs
-      - run: node tests/non-payslip-gaps.test.mjs
-      - run: node tests/data-explanations.test.mjs
-      - run: node tests/ai-ocr.test.mjs
-      - run: node tests/recognition.test.mjs
-      - run: node tests/ui-pwa.test.mjs
+      - run: node tests/run-all.mjs
       - run: node build.mjs
       - name: Controlla che la build contenga parser e indice CNEL
         run: |

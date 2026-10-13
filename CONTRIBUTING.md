@@ -31,13 +31,7 @@ descrivi soltanto il tipo di layout.
 Non serve installare dipendenze npm: per lo sviluppo basta Node.js 22 o successivo.
 
 ```bash
-node tests/parser.test.mjs
-node tests/parser-matrix.test.mjs
-node tests/non-payslip-gaps.test.mjs
-node tests/data-explanations.test.mjs
-node tests/ai-ocr.test.mjs
-node tests/recognition.test.mjs
-node tests/ui-pwa.test.mjs
+node tests/run-all.mjs
 node build.mjs
 ```
 

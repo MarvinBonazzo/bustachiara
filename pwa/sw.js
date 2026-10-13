@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v15-navigazione-parser-fonti';
+const CACHE = 'bustachiara-v16-pulizia';
 const ASSETS = [
   './',
   './index.html',

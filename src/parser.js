@@ -17,15 +17,6 @@ function getPathValue(object, path) {
   return String(path).split('.').reduce((value, key) => value == null ? value : value[key], object);
 }
 
-function setPathValue(object, path, value) {
-  const keys = String(path).split('.');
-  let current = object;
-  for (let i = 0; i < keys.length - 1; i++) {
-    if (!current[keys[i]] || typeof current[keys[i]] !== 'object') current[keys[i]] = {};
-    current = current[keys[i]];
-  }
-  current[keys[keys.length - 1]] = value;
-}
 
 function addCandidate(rec, path, value, evidence = {}) {
   if (value == null || value === '' || (typeof value === 'number' && !Number.isFinite(value))) return;
@@ -703,9 +694,6 @@ function findTableHeaders(lines) {
   return indexes;
 }
 
-function findTableHeader(lines) {
-  return findTableHeaders(lines)[0] ?? -1;
-}
 
 function tableHeads(lines, headerIndex) {
   const heads = {};
@@ -2162,21 +2150,6 @@ function cnelContractByCode(code) {
   };
 }
 
-function findOfficialCcnlByText(value) {
-  if (typeof CNEL_INDEX === 'undefined') return null;
-  const normalized = plain(value).replace(/\b(?:CCNL|CONTRATTO|COLLETTIVO|NAZIONALE|LAVORO|DIPENDENTI|AZIENDE|PER|DEL|DELLA|DEI|NEL|SETTORE)\b/g, ' ')
-    .replace(/\s+/g, ' ').trim();
-  const tokens = normalized.split(' ').filter(token => token.length >= 5);
-  if (tokens.length < 2) return null;
-  let best = null;
-  for (const [code, entry] of Object.entries(CNEL_INDEX)) {
-    const haystack = plain([entry.n, ...(entry.a || []), ...(entry.s || [])].join(' '));
-    const hits = tokens.filter(token => haystack.includes(token)).length;
-    const score = hits / tokens.length;
-    if (hits >= 2 && score >= 0.66 && (!best || score > best.score)) best = { code, score };
-  }
-  return best ? cnelContractByCode(best.code) : null;
-}
 
 // eslint-disable-next-line no-unused-vars
 const Parser = { parsePdfPages, parseFreeText, trovaCcnl, suggerisciCcnl, cnelContractByCode, itNum, fmtEur, buildLines, MESI_IT, derivaIndice, valutaQualita, valutaCoerenza, calcoloVoce, fieldConfidence, normalizzaTesto, ripulisciRecord, quadraturaTotali, rilevaTipoCedolino, classificaDocumento };

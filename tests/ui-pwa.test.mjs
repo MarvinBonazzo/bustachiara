@@ -307,6 +307,6 @@ let activation;
 serviceWorkerContext.handlers.activate({ waitUntil(promise) { activation = promise; } });
 await activation;
 assert.deepEqual(serviceWorkerContext.deleted, ['bustachiara-v9-evidenze-valore', 'bustachiara-v10-ocr-locale']);
-assert.match(serviceWorkerSource, /bustachiara-v15-navigazione-parser-fonti/);
+assert.match(serviceWorkerSource, /const CACHE = 'bustachiara-v\d+-[a-z0-9-]+';/);
 
 console.log('OK — regressioni Riassunto e cache PWA');

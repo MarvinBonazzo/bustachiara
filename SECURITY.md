@@ -7,7 +7,7 @@ lavora soltanto nel browser.
 
 Non aprire una Issue pubblica se il problema può esporre dati, aggirare la Content Security
 Policy o causare l'invio di documenti in rete. Usa una
-[segnalazione privata di sicurezza su GitHub](https://github.com/ShivenBonazzo/bustachiara/security/advisories/new).
+[segnalazione privata di sicurezza su GitHub](https://github.com/MarvinBonazzo/bustachiara/security/advisories/new).
 
 Descrivi il problema con dati inventati. Non allegare mai una busta paga reale, una foto,
 un export personale o credenziali. Se servono passaggi di riproduzione, crea un documento

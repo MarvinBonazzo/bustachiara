@@ -191,15 +191,9 @@ Non è necessario conoscere framework e non serve `npm install`. Occorre soltant
 [Node.js 22](https://nodejs.org/) o successivo.
 
 ```bash
-git clone https://github.com/ShivenBonazzo/bustachiara.git
+git clone https://github.com/MarvinBonazzo/bustachiara.git
 cd bustachiara
-node tests/parser.test.mjs
-node tests/parser-matrix.test.mjs
-node tests/non-payslip-gaps.test.mjs
-node tests/data-explanations.test.mjs
-node tests/ai-ocr.test.mjs
-node tests/recognition.test.mjs
-node tests/ui-pwa.test.mjs
+node tests/run-all.mjs
 node build.mjs
 ```
 
