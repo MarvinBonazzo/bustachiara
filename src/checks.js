@@ -93,8 +93,6 @@ function eseguiControlli(rec, ccnl, storico = []) {
     if (d.ulterioreDetrazione != null) {
       if (near(ult, d.ulterioreDetrazione, 8)) add('ok', 'IRPEF', 'Ulteriore detrazione (taglio cuneo) applicata', `≈ ${fmtEur(ult)} €/mese attesi per reddito ${fmtEur(redditoPresunto, 0)} €; in busta ${fmtEur(d.ulterioreDetrazione)} €.`, null, ['normattiva']);
       else add('info', 'IRPEF', 'Ulteriore detrazione da verificare', `Attesa ≈ ${fmtEur(ult)} €/mese, in busta ${fmtEur(d.ulterioreDetrazione)} €: dipende dal reddito presunto usato dal datore.`, null, ['normattiva']);
-    } else if (ult > 0) {
-      add('warn', 'IRPEF', 'Taglio del cuneo assente?', `Con reddito presunto ${fmtEur(redditoPresunto, 0)} € ti spetterebbe l’ulteriore detrazione L. 207/2024 (≈ ${fmtEur(ult)} €/mese) o, sotto 20.000 €, la somma esente. Non la vedo in busta: chiedi. (Se hai più rapporti di lavoro potresti averla altrove.)`, null, ['normattiva']);
     } else if (redditoPresunto <= 20000) {
       const perc = bonusL207Perc(annoRegole, redditoPresunto);
       add('info', 'IRPEF', 'Bonus cuneo (somma esente)', `Con reddito ≤ 20.000 € spetta una somma esente ≈ ${fmtEur(perc)}% del reddito da lavoro: cercala come voce dedicata in busta.`, null, ['normattiva']);

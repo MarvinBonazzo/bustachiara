@@ -29,7 +29,16 @@ function fontiHTML(ids) {
 const MESI_NOMI = ['', 'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 function periodoLabel(p) { return p ? (MESI_NOMI[p.mese] ? `${MESI_NOMI[p.mese]} ${p.anno}` : `${p.mese}/${p.anno}`) : '—'; }
 function periodoKey(p) { return p ? p.anno * 12 + p.mese : 0; }
-function primaFrase(t) { const i = (t || '').indexOf('. '); return i > 20 ? t.slice(0, i + 1) : (t || ''); }
+function primaFrase(t) {
+  const text = t || '';
+  const re = /\.\s+(?=[A-ZÀ-Ý])/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const before = text.slice(0, m.index);
+    if (m.index > 20 && !/(?:\b(?:art|artt|comma|n|nr|lett|cfr|es|ecc|pag|L|D|Lgs|D\.Lgs|DPR|sig|dott)|\b[A-Z])$/.test(before)) return text.slice(0, m.index + 1);
+  }
+  return text;
+}
 const TIPO_CEDOLINO = {
   ordinario: 'Ordinario', tredicesima: 'Tredicesima', quattordicesima: 'Quattordicesima',
   conguaglio: 'Conguaglio', cessazione: 'Cessazione', arretrati: 'Arretrati',
@@ -186,7 +195,7 @@ function openInfo(titolo, bodyHtml) {
   $('#popover-body').innerHTML = bodyHtml;
   $('#popover').hidden = false;
   document.body.classList.add('modal-open');
-  ['#topbar', '#screen-nav', '#tabs', 'main', 'footer'].forEach(s => {
+  ['#topbar', 'main', 'footer'].forEach(s => {
     const el = $(s); if (!el) return;
     el.setAttribute('aria-hidden', 'true');
     el.inert = true;
@@ -197,7 +206,7 @@ function closeInfo() {
   if ($('#popover').hidden) return;
   $('#popover').hidden = true;
   document.body.classList.remove('modal-open');
-  ['#topbar', '#screen-nav', '#tabs', 'main', 'footer'].forEach(s => {
+  ['#topbar', 'main', 'footer'].forEach(s => {
     const el = $(s); if (!el) return;
     el.removeAttribute('aria-hidden');
     el.inert = false;
@@ -321,6 +330,8 @@ function showView(name, options = {}) {
   const historyMode = options.historyMode || 'push';
   $$('.view').forEach(v => v.classList.remove('active'));
   const el = $('#view-' + name); if (el) el.classList.add('active');
+  if (typeof document !== 'undefined') document.body.dataset.view = name;
+  if (typeof closeMenu === 'function') closeMenu();
   $$('#tabs .tab').forEach(b => {
     const active = b.dataset.view === name;
     b.classList.toggle('active', active);
@@ -360,8 +371,8 @@ function renderRoute(name, recordId) {
       };
     }
     renderVerifica();
-  } else if (name === 'dettaglio') renderDettaglio(recordId || routeRecordId(name));
-  else if (name === 'riassunto') renderRiassunto(recordId || routeRecordId(name));
+  } else if (name === 'dettaglio') return renderDettaglio(recordId || routeRecordId(name));
+  else if (name === 'riassunto') return renderRiassunto(recordId || routeRecordId(name));
   else if (name === 'importa') renderImporta();
   else if (name === 'consigli') renderConsigli();
   else if (name === 'guida') renderGuida();
@@ -411,22 +422,23 @@ $('#tabs').addEventListener('click', (e) => {
    IMPORTA
    ============================================================ */
 function renderImporta() {
+  const last = recSorted().slice(-1)[0];
   $('#view-importa').innerHTML = `
-  <div class="home-import">
+  <div class="home">
     <div id="dropzone" role="button" tabindex="0" aria-describedby="dropzone-help">
-      <div class="dz-icon"></div>
-      <p><b>Scegli la tua busta paga</b><br><span class="drop-secondary">oppure trascinala qui</span><br><span id="dropzone-help" class="muted small">PDF, scansione o foto</span></p>
+      <span class="dz-icon" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></span>
+      <b>Carica la busta paga</b>
+      <span id="dropzone-help" class="muted">Tocca o trascina qui · PDF o foto</span>
       <input type="file" id="file-input" accept="application/pdf,image/*" aria-label="Scegli un PDF o un'immagine della busta paga" hidden>
     </div>
-    <div id="import-status" role="status" aria-live="polite" style="display:none; margin-top:12px">
+    <div id="import-status" role="status" aria-live="polite" style="display:none">
       <p id="import-msg" class="muted"></p><progress id="import-bar" max="1" value="0"></progress>
     </div>
-    <div class="home-promises" aria-label="Garanzie di BustaChiara">
-      <p>Funziona offline.</p>
-      <p>Privacy 100%.</p>
-      <p>Non invii nessun dato a nessuno.</p>
-    </div>
+    <p class="home-privacy"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Resta sul tuo dispositivo, non viene inviata a nessuno.</p>
+    ${last ? `<button type="button" class="home-last" id="home-last">Ultima busta: ${esc(periodoLabel(last.periodo))} · ${fmtEur(last.totali.netto)} € ›</button>` : ''}
   </div>`;
+  const lastButton = $('#home-last');
+  if (lastButton) lastButton.addEventListener('click', () => navigateTo('riassunto', last.id));
   const dz = $('#dropzone'), fi = $('#file-input');
   dz.addEventListener('click', () => fi.click());
   dz.addEventListener('keydown', e => {
@@ -1440,77 +1452,144 @@ function salvaDraft() {
 }
 
 /* ============================================================
-   DETTAGLIO
+   RIASSUNTO E VOCI
    ============================================================ */
-function selettorePeriodo(r) {
+/* Barra per passare da un mese archiviato all'altro (solo se ce n'è più di uno). */
+function selettorePeriodo(r, view) {
   const recs = recSorted();
   if (recs.length < 2) return '';
-  return `<label class="field" style="max-width:220px;margin-bottom:8px">Mese archiviato
-    <select id="sel-periodo">${recs.map(x => `<option value="${esc(x.id)}" ${x.id === r.id ? 'selected' : ''}>${esc(periodoLabel(x.periodo))} · ${esc(tipoCedolinoLabel(x))}${x.azienda && x.azienda.nome ? ` · ${esc(x.azienda.nome)}` : ''}</option>`).join('')}</select>
-  </label>`;
+  const i = recs.findIndex(x => x.id === r.id);
+  const prev = recs[i - 1], next = recs[i + 1];
+  return `<div class="month-bar">
+    <button type="button" class="month-step" data-goto="${prev ? esc(prev.id) : ''}" ${prev ? '' : 'disabled'} aria-label="Busta precedente">‹</button>
+    <label><span class="sr-only">Scegli la busta</span><select class="month-select" data-view="${view}">${recs.map(x => `<option value="${esc(x.id)}" ${x.id === r.id ? 'selected' : ''}>${esc(periodoLabel(x.periodo))}${tipoCedolino(x) !== 'ordinario' ? ` · ${esc(tipoCedolinoLabel(x))}` : ''}</option>`).join('')}</select></label>
+    <button type="button" class="month-step" data-goto="${next ? esc(next.id) : ''}" ${next ? '' : 'disabled'} aria-label="Busta successiva">›</button>
+  </div>`;
 }
+function bindSelettorePeriodo(el, view) {
+  const select = $('.month-select', el);
+  if (select) select.addEventListener('change', () => navigateTo(view, select.value));
+  $$('.month-step', el).forEach(b => b.addEventListener('click', () => { if (b.dataset.goto) navigateTo(view, b.dataset.goto); }));
+}
+
 function renderDettaglio(id) {
   const r = Store.data.records.find(x => x.id === id);
   const el = $('#view-dettaglio');
   currentDetailId = id || null;
-  if (!r) { el.innerHTML = `<div class="card"><h2>Nessuna busta selezionata</h2><p class="muted">Importa una busta paga per vedere qui l’analisi completa.</p><div class="btnrow"><button class="primary" id="dt-go-import">Importa una busta</button></div></div>`; const b = $('#dt-go-import'); if (b) b.addEventListener('click', () => navigateTo('importa')); return; }
+  if (!r) return false;
   const ccnl = r.ccnlId ? ccnlById(r.ccnlId) : Parser.trovaCcnl(r, CCNL_DB, Store.data.customCcnl.map(reviveCustom));
-  const findings = eseguiControlli(r, ccnl, Store.data.records);
   detailVoci = r.voci;
-  renderDettaglioCompleto(el, r, ccnl, findings);
-  const sel = $('#sel-periodo');
-  if (sel) sel.addEventListener('change', () => navigateTo('dettaglio', sel.value));
+  renderDettaglioCompleto(el, r, ccnl);
+  return true;
 }
 
-/* Sezione richiudibile del Dettaglio (aperta di default) */
+/* Sezione richiudibile (usata da Diritti minimi e dalle schede contratto) */
 function sez(titleHtml, bodyHtml, open = true) {
   return `<details class="card sez" ${open ? 'open' : ''}><summary><h2>${titleHtml}</h2></summary><div class="sez-body">${bodyHtml}</div></details>`;
 }
-function vociTableHTML(r) {
-  if (!r.voci || !r.voci.length) return '<p class="muted">Non sono state trovate righe retributive da spiegare.</p>';
-  const isRedundantLabel = (original, normalized) => {
-    const a = aliasKey(original), b = aliasKey(normalized);
-    if (!a || !b || a === b || a.includes(b) || b.includes(a)) return true;
-    const stems = value => new Set(aliasKey(value).split(' ').filter(token => token.length > 2).map(token => token.slice(0, 7)));
-    const aTokens = stems(original), bTokens = stems(normalized);
-    const overlap = [...aTokens].filter(token => bTokens.has(token)).length;
-    return overlap / Math.max(1, Math.min(aTokens.size, bTokens.size)) >= .66;
-  };
-  const amountLabel = (v, cat) => {
-    if (v.trattenuta != null) return `${Number(v.trattenuta) < 0 ? '+' : '−'} ${fmtEur(Math.abs(v.trattenuta))} €`;
-    if (v.competenza != null) return `${Number(v.competenza) < 0 ? '−' : '+'} ${fmtEur(Math.abs(v.competenza))} €`;
-    if (v.costoAzienda != null) return `${fmtEur(v.costoAzienda)} € azienda`;
-    return cat === 'dato' ? 'Informazione' : '—';
-  };
-  const entries = r.voci.map((v, i) => ({ v, i, s: spiegaVoce(v) }));
-  const groups = [
-    { cat: 'competenza', title: 'Competenze', note: 'Somme che aumentano il lordo del mese' },
-    { cat: 'trattenuta', title: 'Trattenute', note: 'Somme sottratte prima del netto' },
-    { cat: 'dato', title: 'Dati di calcolo', note: 'Informazioni che spiegano il cedolino senza cambiare direttamente il netto' },
-  ];
-  return `<div class="voice-ledger">${groups.map(group => {
-    const rows = entries.filter(entry => (entry.s.cat || 'dato') === group.cat);
-    if (!rows.length) return '';
-    const total = rows.reduce((sum, entry) => sum + Number(group.cat === 'competenza' ? entry.v.competenza || 0 : group.cat === 'trattenuta' ? entry.v.trattenuta || 0 : 0), 0);
-    const totalLabel = group.cat === 'dato' ? '' : `${group.cat === 'trattenuta' ? (total < 0 ? '+' : '−') : (total < 0 ? '−' : '+')} ${fmtEur(Math.abs(total))} €`;
-    return `<section class="voice-ledger-group ${group.cat}">
-      <header class="voice-ledger-header"><div><h3>${group.title}</h3><p>${group.note} · ${rows.length} ${rows.length === 1 ? 'voce' : 'voci'}</p></div>${totalLabel ? `<strong>${totalLabel}</strong>` : ''}</header>
-      <div class="voice-ledger-rows">${rows.map(({ v, i, s }) => {
-        const original = v.descrizione && !isRedundantLabel(v.descrizione, s.nome) ? v.descrizione : '';
-        const usefulCheck = controlloUtileVoce(v, s);
-        return `<article class="voce-row voice-ledger-row ${group.cat}" data-vocei="${i}">
-          <div class="voice-ledger-copy"><div class="voice-ledger-title"><b>${esc(s.nome)}</b>${v.codice ? `<span class="voice-code">${esc(v.codice)}</span>` : ''}</div>
-            ${original ? `<p class="voice-original">Sul cedolino: ${esc(original)}</p>` : ''}
-            <p class="voice-meaning">${esc(spiegazioneBreveVoce(v, s))}</p>
-            ${v.meta && v.meta.nonMultiplicative && v.rifTesto ? `<p class="voice-reference">Riferimento: ${esc(v.rifTesto)}</p>` : ''}
-            ${usefulCheck ? `<button type="button" class="voice-ledger-check" data-edit-voice="${i}">${esc(usefulCheck)} <span>Correggi</span></button>` : ''}
-          </div>
-          <strong class="voice-ledger-amount">${esc(amountLabel(v, group.cat))}</strong>
-          <button class="ibtn" data-vocei="${i}" title="Approfondisci" aria-label="Approfondisci ${esc(s.nome)}">i</button>
-        </article>`;
-      }).join('')}</div>
-    </section>`;
-  }).join('')}</div>`;
+
+const isOre = (unit) => /^(?:ORE|ORA|H)$/i.test(unit || '');
+const isGiorni = (unit) => /^(?:GG|GIORNI|G|GIORNO)$/i.test(unit || '');
+function fmtQta(value) { const n = Number(value); return fmtEur(n, Number.isInteger(n) ? 0 : Math.abs(n * 10 - Math.round(n * 10)) < 1e-9 ? 1 : 2); }
+function unitaTempo(unit, value) {
+  if (isOre(unit)) return Number(value) === 1 ? 'ora' : 'ore';
+  return Number(value) === 1 ? 'giorno' : 'giorni';
+}
+
+/* Nome comprensibile a chiunque; se non lo riconosco resta quello della base dati. */
+function nomeSemplice(v, s = spiegaVoce(v)) {
+  const t = `${v.descrizione || ''} ${s.nome || ''}`;
+  if (v.trattenuta != null) {
+    if (/ritenut\w*\s+irpef|irpef\s+(?:a\s+)?debito|ritenute\s+fiscali/i.test(t)) return 'Tasse allo Stato (IRPEF)';
+    if (/addiz\w*\s+reg/i.test(t)) return 'Tassa della Regione';
+    if (/addiz\w*\s+com/i.test(t)) return 'Tassa del Comune';
+    if (/cessione|quinto|prestit|pignor|delegazione/i.test(t)) return 'Rata di un prestito';
+    if (/sindacal/i.test(t)) return 'Quota del sindacato';
+    if (/fondo\s+pension|previdenza\s+complem|fon\.?te\b|cometa|fonchim|previambiente/i.test(t)) return 'Fondo pensione';
+    if (/\bfis\b|integrazione\s+salariale/i.test(t)) return 'Fondo FIS';
+    if (/\bivs\b|contribut\w*\s+(?:inps|previd)|\binps\b/i.test(t)) return 'Pensione (INPS)';
+    if (/fast|sanit|\best\b|metasalute|cassa\s+assist/i.test(t)) return 'Assicurazione sanitaria';
+    return s.nome;
+  }
+  const rateo = /rateo/i.test(t) || (isOre(v.rifUnita) && Number(v.rifQta) < 40);
+  if (/13.?m|tredicesim|gratifica\s+natal/i.test(t)) return rateo ? 'Pezzo di tredicesima' : 'Tredicesima';
+  if (/14.?m|quattordicesim/i.test(t)) return rateo ? 'Pezzo di quattordicesima' : 'Quattordicesima';
+  if (/straordin|supplementar/i.test(t)) return 'Straordinari';
+  if (/ferie\s+god|godiment\w*\s+ferie/i.test(t)) return 'Ferie usate';
+  if (/(?:permess|\brol\b|ex\s*fest)[\s\S]*god|god[\s\S]*(?:permess|\brol\b)/i.test(t)) return 'Permessi usati';
+  if (/malatt/i.test(t)) return 'Malattia';
+  if (/retribuzion|stipendio|paga\s+base|ore\s+ordinar|lavoro\s+ordinario/i.test(t) && !/magg|festiv|notturn/i.test(t)) {
+    if (isOre(v.rifUnita)) return 'Ore lavorate';
+    if (isGiorni(v.rifUnita)) return 'Giorni lavorati';
+    return 'Stipendio del mese';
+  }
+  return s.nome;
+}
+
+/* Il conto della voce, in pezzi da mostrare come "a × b = c". Solo se torna. */
+function calcoloVoceParti(v, record) {
+  const togli = v.trattenuta != null;
+  const risultato = (value) => ({ v: `${fmtEur(value)} €`, l: togli ? 'tolti' : 'per te', res: true });
+  if (togli && nomeSemplice(v) === 'Tasse allo Stato (IRPEF)') {
+    const d = record.derivati || {};
+    const lorda = Number(d.irpefLorda), detr = Number(d.detrazioni) || 0, extra = Number(d.ulterioreDetrazione) || 0;
+    if (Number.isFinite(lorda) && lorda > 0 && Math.abs(lorda - detr - extra - Math.abs(Number(v.trattenuta))) < .05) {
+      const parts = [{ v: `${fmtEur(lorda)} €`, l: 'tasse piene' }];
+      if (detr) parts.push({ op: '−' }, { v: `${fmtEur(detr)} €`, l: 'sconto dipendenti' });
+      if (extra) parts.push({ op: '−' }, { v: `${fmtEur(extra)} €`, l: 'sconto extra' });
+      return [...parts, { op: '=' }, risultato(Math.abs(Number(v.trattenuta)))];
+    }
+  }
+  const c = Parser.calcoloVoce(v);
+  if (!c || !c.ok) return null;
+  const q = Number(v.rifQta), b = Number(v.base);
+  if (v.rifUnita === '%') return [{ v: `${fmtEur(b)} €`, l: 'stipendio lordo' }, { op: '×' }, { v: `${fmtQta(q)}%`, l: 'percentuale' }, { op: '=' }, risultato(c.amount)];
+  if (isOre(v.rifUnita) || isGiorni(v.rifUnita)) {
+    return [{ v: `${fmtQta(q)} ${unitaTempo(v.rifUnita, q)}`, l: 'quante' }, { op: '×' }, { v: `${fmtEur(b)} €`, l: isOre(v.rifUnita) ? 'paga all’ora' : 'paga al giorno' }, { op: '=' }, risultato(c.amount)];
+  }
+  return [{ v: fmtQta(q), l: 'quantità' }, { op: '×' }, { v: `${fmtEur(b)} €`, l: 'ognuna' }, { op: '=' }, risultato(c.amount)];
+}
+function calcoloHTML(parts) {
+  if (!parts) return '';
+  return `<div class="calc" aria-label="Come è calcolata">${parts.map(p => p.op
+    ? `<span class="calc-op" aria-hidden="true">${esc(p.op)}</span>`
+    : `<span class="calc-box${p.res ? ' res' : ''}"><b>${esc(p.v)}</b><small>${esc(p.l)}</small></span>`).join('')}</div>`;
+}
+
+function saldoRateo(record, key) {
+  const r = record.ratei && record.ratei[key];
+  if (!r || r.saldo == null) return null;
+  return { saldo: r.saldo, unita: isOre(r.unita) ? 'ore' : 'giorni' };
+}
+function rimanenteVoce(v, record) {
+  const nome = nomeSemplice(v);
+  const key = nome === 'Ferie usate' ? 'ferie' : nome === 'Permessi usati' ? 'permessi' : null;
+  const saldo = key && saldoRateo(record, key);
+  if (!saldo) return '';
+  return `Ti restano ancora ${fmtQta(saldo.saldo)} ${saldo.unita} di ${key === 'ferie' ? 'ferie' : 'permesso'}`;
+}
+
+/* Ferie o permessi usati nel mese, letti dalle voci (ore o giorni). */
+function usatoNelMese(record, re) {
+  const voce = (record.voci || []).find(v => re.test(v.descrizione || '') && Number.isFinite(Number(v.rifQta)) && (isOre(v.rifUnita) || isGiorni(v.rifUnita)));
+  return voce ? `${fmtQta(voce.rifQta)} ${unitaTempo(voce.rifUnita, voce.rifQta)}` : '';
+}
+
+/* TFR: quota del mese e quanto c'è "nel salvadanaio" ora. */
+function tfrSemplice(record) {
+  const t = record.tfr || {};
+  const parts = [['fondo3112', 'fino a dicembre'], ['rivalutazione', 'interessi'], ['quotaAnno', 'quest’anno']]
+    .filter(([k]) => Number.isFinite(Number(t[k])) && Number(t[k]) !== 0)
+    .map(([k, l]) => ({ v: Number(t[k]), l }));
+  const totale = parts.length && (t.fondo3112 != null || t.quotaAnno != null) ? parts.reduce((sum, p) => sum + p.v, 0) : null;
+  if (t.quotaMese == null && totale == null) return null;
+  return { quotaMese: t.quotaMese, totale, parts, aFondi: !!t.aFondi };
+}
+
+function importoFirmato(value, togli) {
+  const n = Number(value);
+  const segno = togli ? (n < 0 ? '+ ' : '') : (n < 0 ? '− ' : '');
+  return `${segno}${fmtEur(Math.abs(n))} €`;
 }
 
 function importoVoci(record, regex, used = new Set()) {
@@ -1525,105 +1604,29 @@ function importoVoci(record, regex, used = new Set()) {
   return { totale, quantita };
 }
 
-function totalePresenze(record, tipi) {
-  const rows = record.presenze && Array.isArray(record.presenze.righe) ? record.presenze.righe : [];
-  const selected = rows.filter(row => tipi.includes(row.tipo) && Number.isFinite(Number(row.totale)));
-  return {
-    totale: selected.reduce((sum, row) => sum + Number(row.totale), 0),
-    unita: (selected[0] && selected[0].unita) || 'ORE',
-    righe: selected,
+/* Le cose in più del mese, per il Riassunto. */
+function extraDelMese(record) {
+  const used = new Set(), out = [];
+  const add = (title, re, sub) => {
+    const r = importoVoci(record, re, used);
+    if (r.totale) out.push({ title, sub: sub(r), amount: r.totale });
   };
+  add('Straordinari', /straordinar|supplementar|ore\s+extra/i, r => r.quantita ? `${fmtQta(r.quantita)} ore oltre l’orario, pagate un po’ di più` : 'Ore oltre l’orario, pagate un po’ di più');
+  add('Domeniche e festivi', /magg.*(?:domenic|festiv)|(?:domenic|festiv).*magg|riposo\s+settimanale/i, () => 'Un extra per aver lavorato in giorni speciali');
+  add('Lavoro di notte', /notturn/i, () => 'Un extra per le ore lavorate di notte');
+  add('Premi', /premio|bonus|incentiv|provvig|una\s*tantum/i, () => 'Soldi in più per i risultati');
+  add('Pezzi di tredicesima e quattordicesima', /13.?m|tredicesim|14.?m|quattordicesim|gratifica\s+natalizia/i, () => 'Invece che tutte insieme, ti arrivano un po’ ogni mese');
+  add('Rimborsi', /rimborso|trasferta|pie.*lista|chilometr/i, () => 'Soldi che ti restituiscono per spese di lavoro');
+  return out;
 }
 
-function commentiSemplici(record) {
-  const comments = [], used = new Set();
-  const addExtra = (title, result, sentence) => {
-    if (!result.totale) return;
-    comments.push({ title, text: sentence(result) });
-  };
-  addExtra('Riposo settimanale', importoVoci(record, /riposo\s+settimanale.*(?:non.*domenic|spostat)|magg.*riposo\s+settimanale/i, used), result =>
-    `La maggiorazione legata al riposo settimanale collocato in un giorno diverso dalla domenica ha aggiunto ${fmtEur(result.totale)} € lordi.`);
-  addExtra('Domeniche', importoVoci(record, /magg.*domenic|domenic.*magg/i, used), result =>
-    `Le maggiorazioni legate alle domeniche hanno aggiunto ${fmtEur(result.totale)} € lordi. Senza queste maggiorazioni, il lordo del mese sarebbe stato più basso dello stesso importo.`);
-  addExtra('Festivi', importoVoci(record, /magg.*festiv|festiv.*maggioraz/i, used), result =>
-    `Le maggiorazioni per i giorni festivi hanno aggiunto ${fmtEur(result.totale)} € lordi.`);
-  addExtra('Lavoro notturno', importoVoci(record, /notturn/i, used), result =>
-    `Il lavoro notturno ha aggiunto ${fmtEur(result.totale)} € lordi. Senza queste ore, il lordo sarebbe stato più basso dello stesso importo.`);
-  addExtra('Ore in più', importoVoci(record, /straordinar|supplementar|ore\s+extra/i, used), result =>
-    `Straordinari e ore supplementari hanno aggiunto ${fmtEur(result.totale)} € lordi${result.quantita ? ` per ${fmtEur(result.quantita, 1)} ore indicate` : ''}.`);
-  const extraAttendance = totalePresenze(record, ['ore-extra']);
-  if (extraAttendance.totale) comments.push({
-    title: 'Ore indicate nel calendario',
-    text: `La tabella presenze riporta ${fmtEur(extraAttendance.totale)} ${/ORE/i.test(extraAttendance.unita) ? 'ore' : 'giorni'} tra straordinari, lavoro supplementare o banca ore. È tempo registrato, non un importo in euro: il pagamento va verificato nelle competenze.`,
-  });
-  addExtra('Premi', importoVoci(record, /premio|bonus|incentiv|provvig|una\s*tantum/i, used), result =>
-    `Premi e incentivi hanno aggiunto ${fmtEur(result.totale)} € lordi questo mese.`);
-  addExtra('Mensilità aggiuntive', importoVoci(record, /13.?ma|tredicesim|14.?ma|quattordicesim|gratifica\s+natalizia/i, used), result =>
-    `Tredicesima o quattordicesima hanno aggiunto ${fmtEur(result.totale)} € lordi in questo cedolino.`);
-
-  addExtra('Rimborsi', importoVoci(record, /rimborso|trasferta.*(?:esente|rimbor)|pie.*lista|indennit[aà].*chilometr/i, used), result =>
-    `Rimborsi e trasferte riconosciuti nel cedolino ammontano a ${fmtEur(result.totale)} €. Possono avere regole fiscali diverse dallo stipendio ordinario.`);
-  addExtra('Conguagli e crediti', importoVoci(record, /conguaglio.*credito|credito.*(?:irpef|730)|rimborso.*730|trattamento\s+integrativo/i, used), result =>
-    `Crediti fiscali o conguagli a tuo favore hanno aggiunto ${fmtEur(result.totale)} € questo mese.`);
-  const absenceAttendance = totalePresenze(record, ['assenza', 'assenza-tutelata']);
-  const paidAbsence = importoVoci(record, /malatt|maternit|paternit|infortun|ferie\s+godut|permess|rol\s+godut|conged/i, used);
-  const absenceVoice = (record.voci || []).find(voice => /malatt|maternit|paternit|infortun|ferie\s+godut|permess|rol\s+godut|conged/i.test(voice.descrizione || '')
-    && Number.isFinite(Number(voice.rifQta)) && /^(?:ORE|ORA|H|GG|GIORNI)$/i.test(voice.rifUnita || ''));
-  if (absenceAttendance.totale) comments.push({
-    title: 'Assenze pagate',
-    text: `La tabella presenze indica ${fmtEur(absenceAttendance.totale)} ${/ORE/i.test(absenceAttendance.unita) ? 'ore' : 'giorni'} di ferie, permessi o altre assenze. È tempo registrato, non denaro.`,
-  });
-  else if (absenceVoice) comments.push({
-    title: 'Assenze pagate',
-    text: `Il cedolino indica ${fmtEur(absenceVoice.rifQta)} ${/^(?:ORE|ORA|H)$/i.test(absenceVoice.rifUnita) ? 'ore' : 'giorni'} per ${String(absenceVoice.descrizione || 'assenze').toLowerCase()}. È una quantità di tempo, non un importo in euro.`,
-  });
-  else if (paidAbsence.totale) comments.push({ title: 'Assenze pagate', text: `Nel cedolino risultano ${fmtEur(paidAbsence.totale)} € collegati ad assenze retribuite. Possono sostituire la paga ordinaria delle ore non lavorate.` });
-
-  const totals = record.totali || {}, derivati = record.derivati || {};
-  if (totals.competenze > 0 && totals.trattenute != null) {
-    comments.push({ title: 'Dal lordo al netto', text: `Su ${fmtEur(totals.competenze)} € di competenze, ${fmtEur(totals.trattenute)} € sono stati trattenuti: circa il ${fmtEur(totals.trattenute / totals.competenze * 100, 0)}%. Il netto finale è ${fmtEur(totals.netto)} €.` });
-  }
-  const contributions = Math.max(0, Number(derivati.ivs && derivati.ivs.importo) || 0) + Math.max(0, Number(derivati.fis && derivati.fis.importo) || 0);
-  if (contributions) comments.push({ title: 'Contributi', text: `${fmtEur(contributions)} € risultano destinati a pensione e tutele previdenziali. Sono trattenute, ma non sono imposte.` });
-  const taxes = Math.max(0, Number(derivati.ritenuteIrpef) || 0) + Math.max(0, Number(derivati.addRegionale) || 0) + Math.max(0, Number(derivati.addComunale) || 0);
-  if (taxes) comments.push({ title: 'Imposte', text: `IRPEF e addizionali riconosciute ammontano a ${fmtEur(taxes)} €. Conguagli e detrazioni possono far cambiare questa cifra da un mese all’altro.` });
-  const forcedDeductions = (record.voci || []).filter(voice => voice.trattenuta != null && /cessione|quinto|pignor|delegazione|prestito/i.test(voice.descrizione || '')).reduce((sum, voice) => sum + Number(voice.trattenuta || 0), 0);
-  if (forcedDeductions) comments.push({ title: 'Prestiti o trattenute personali', text: `${fmtEur(forcedDeductions)} € sono stati sottratti per cessioni, prestiti o pignoramenti riconosciuti nel cedolino.` });
-
-  const ferie = record.ratei && record.ratei.ferie;
-  if (ferie && ferie.saldo != null) {
-    const unita = /^(?:ORE|ORA|H)$/i.test(ferie.unita || '') ? 'ore' : 'giorni';
-    comments.push({ title: 'Riposo disponibile', text: `Ti restano ${fmtEur(ferie.saldo, 1)} ${unita} di ferie pagate.` });
-  }
-  const permessi = record.ratei && record.ratei.permessi;
-  if (permessi && permessi.saldo != null) comments.push({ title: 'Permessi disponibili', text: `Il saldo indicato è ${fmtEur(permessi.saldo, 1)} ${/^(?:ORE|ORA|H)$/i.test(permessi.unita || '') ? 'ore' : 'giorni'} di permesso.` });
-  const tfr = record.tfr || {};
-  if (tfr.quotaMese != null) comments.push({ title: 'TFR', text: `Questo mese sono stati messi da parte ${fmtEur(tfr.quotaMese)} € di TFR.` });
-
+function nettoPrecedente(record) {
   const previous = recSorted().filter(item => item.id !== record.id && item.totali && item.totali.netto != null
     && employerKey(item) === employerKey(record) && tipoCedolino(item) === tipoCedolino(record)
     && periodoKey(item.periodo) < periodoKey(record.periodo)).slice(-1)[0];
-  if (previous && record.totali && record.totali.netto != null) {
-    const delta = record.totali.netto - previous.totali.netto;
-    if (Math.abs(delta) >= .01) comments.push({ title: 'Rispetto al mese prima', text: `Hai ricevuto ${fmtEur(Math.abs(delta))} € netti ${delta > 0 ? 'in più' : 'in meno'} rispetto a ${periodoLabel(previous.periodo)}.` });
-  }
-  if (!comments.length) comments.push({ title: 'Questo mese', text: 'Non risultano compensi extra riconoscibili. Il cedolino mostra soprattutto la retribuzione ordinaria.' });
-  return comments.slice(0, 12);
-}
-
-function commentiSempliciHTML(record) {
-  return `<div class="simple-comments">${commentiSemplici(record).map((comment, index) => `<div class="simple-comment ${index > 3 ? 'neutral' : ''}"><b>${esc(comment.title)}</b><p>${esc(comment.text)}</p></div>`).join('')}</div>`;
-}
-
-function presenzeHTML(record) {
-  const rows = record.presenze && Array.isArray(record.presenze.righe)
-    ? record.presenze.righe.filter(row => Number.isFinite(Number(row.totale))) : [];
-  if (!rows.length) return '';
-  return `<div class="card attendance-card"><h2>Presenze del mese</h2><div class="attendance-list">${rows.map(row => {
-    const unit = /ORE/i.test(row.unita || '') ? 'ore' : 'giorni';
-    const days = Array.isArray(row.giorni) ? new Set(row.giorni.map(item => item.giorno)).size : 0;
-    return `<div class="attendance-row"><div><b>${esc(row.descrizione)}</b>${days ? `<span>${days} ${days === 1 ? 'giorno compilato' : 'giorni compilati'}</span>` : ''}</div><strong>${fmtEur(row.totale)} ${unit}</strong></div>`;
-  }).join('')}</div><p class="muted small">Questi sono totali di tempo letti dalla tabella presenze, non importi in euro.</p></div>`;
+  if (!previous || !record.totali || record.totali.netto == null) return null;
+  const delta = record.totali.netto - previous.totali.netto;
+  return Math.abs(delta) >= .01 ? { delta, label: MESI_NOMI[previous.periodo.mese] ? MESI_NOMI[previous.periodo.mese].toLowerCase() : periodoLabel(previous.periodo) } : null;
 }
 
 function testoControlloSemplice(finding) {
@@ -1636,10 +1639,11 @@ function testoControlloSemplice(finding) {
 
 function controlliSempliciHTML(findings) {
   const urgent = findings.filter(finding => finding.livello === 'alert' || finding.livello === 'warn').slice(0, 4);
-  if (!urgent.length) return '';
-  return `<div class="card"><h2>Da controllare</h2><div class="simple-alerts">${urgent.map(finding => `<div class="simple-alert ${finding.livello}"><b>${esc(finding.titolo)}</b><span>${esc(testoControlloSemplice(finding))}</span></div>`).join('')}</div></div>`;
+  if (!urgent.length) return `<p class="all-good"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>I controlli automatici non hanno trovato niente di strano.</p>`;
+  return `<section class="card to-check"><h2>${urgent.length === 1 ? '1 cosa da controllare' : `${urgent.length} cose da controllare`}</h2>${urgent.map(finding => `<div class="to-check-item"><b>${esc(finding.titolo)}</b><p>${esc(testoControlloSemplice(finding))}</p></div>`).join('')}</section>`;
 }
 
+const FLOW_COLORS = { netto: 'var(--brand)', contributi: 'var(--c-pensione)', tasse: 'var(--c-tasse)', altre: 'var(--c-altro)' };
 function calcolaFlussoStipendio(record) {
   const t = record.totali || {}, d = record.derivati || Parser.derivaIndice(record);
   const netto = Math.max(0, Number(t.netto) || 0);
@@ -1658,57 +1662,139 @@ function calcolaFlussoStipendio(record) {
   return {
     totale, netto, trattenute,
     segments: [
-      { key: 'netto', label: 'A te', value: netto, color: 'var(--brand)' },
-      { key: 'contributi', label: 'Contributi', value: contributi, color: '#e08a2e' },
-      { key: 'tasse', label: 'Tasse', value: tasse, color: '#d0342c' },
-      { key: 'altre', label: 'Altre trattenute', value: altre, color: '#929c98' },
+      { key: 'netto', label: 'Ti resta (netto)', value: netto, color: FLOW_COLORS.netto },
+      { key: 'contributi', label: 'Messi da parte per la pensione', value: contributi, color: FLOW_COLORS.contributi },
+      { key: 'tasse', label: 'Tasse', value: tasse, color: FLOW_COLORS.tasse },
+      { key: 'altre', label: 'Altre trattenute', value: altre, color: FLOW_COLORS.altre },
     ].filter(segment => segment.value > .005),
   };
 }
 
-function flussoStipendioHTML(record) {
-  const flow = calcolaFlussoStipendio(record);
-  if (!flow.totale) return '<p class="muted">Non ci sono ancora abbastanza dati per costruire il grafico.</p>';
-  return `<div class="money-flow" role="img" aria-label="Suddivisione tra netto, contributi, tasse e altre trattenute">${flow.segments.map(segment => `<span style="width:${(segment.value / flow.totale * 100).toFixed(3)}%;background:${segment.color}" title="${esc(segment.label)}: ${fmtEur(segment.value)} €"></span>`).join('')}</div>
-    <div class="money-flow-list">${flow.segments.map(segment => `<div class="money-flow-row"><span class="swatch" style="background:${segment.color}"></span><span>${esc(segment.label)}</span><b>${fmtEur(segment.value)} € · ${fmtEur(segment.value / flow.totale * 100, 0)}%</b></div>`).join('')}</div>
-    <p class="muted small">Il grafico usa il netto e il totale delle trattenute confermati: le parti sommano sempre al 100% del denaro che porta al netto.</p>`;
+function flussoHTML(r) {
+  const flow = calcolaFlussoStipendio(r);
+  const lordo = r.totali.competenze != null ? Number(r.totali.competenze) : flow.totale;
+  if (!flow.totale) return '';
+  const pct = Math.round(flow.netto / flow.totale * 100);
+  const minus = flow.segments.filter(s => s.key !== 'netto');
+  return `<section class="card">
+    <h2>Dal lordo al netto</h2>
+    <p class="lead">Hai guadagnato ${fmtEur(lordo)} €. Prima di dartelo, una parte è andata alla tua pensione e una parte in tasse: su 100 € te ne arrivano circa ${pct}.</p>
+    <div class="money-bar" role="img" aria-label="${flow.segments.map(s => `${s.label} ${Math.round(s.value / flow.totale * 100)}%`).join(', ')}">${flow.segments.map(s => `<span style="width:${(s.value / flow.totale * 100).toFixed(2)}%;background:${s.color}"></span>`).join('')}</div>
+    <div class="rows">
+      <div class="row"><span>Hai guadagnato (lordo)</span><b>${fmtEur(lordo)} €</b></div>
+      ${minus.map(s => `<div class="row"><span><i class="swatch" style="background:${s.color}"></i>${esc(s.label)}</span><span>− ${fmtEur(s.value)} €</span></div>`).join('')}
+      <div class="row total"><b>Ti resta (netto)</b><b class="brand">${fmtEur(r.totali.netto)} €</b></div>
+    </div>
+  </section>`;
 }
 
 function renderRiassunto(id) {
   const r = Store.data.records.find(item => item.id === id) || recSorted().slice(-1)[0];
   const el = $('#view-riassunto');
-  if (!r) {
-    el.innerHTML = '<div class="card"><h2>Nessuna busta paga</h2><p>Carica un documento dalla Home per vedere qui il riassunto.</p><div class="btnrow"><button class="primary" id="summary-home">Vai alla Home</button></div></div>';
-    const button = $('#summary-home'); if (button) button.addEventListener('click', () => navigateTo('importa'));
-    return;
-  }
+  if (!r) return false;
   currentDetailId = r.id;
+  const ccnl = r.ccnlId ? ccnlById(r.ccnlId) : null;
+  const findings = eseguiControlli(r, ccnl, Store.data.records);
+  const extra = extraDelMese(r);
+  const ferie = saldoRateo(r, 'ferie'), permessi = saldoRateo(r, 'permessi');
+  const tfr = tfrSemplice(r);
+  const diff = nettoPrecedente(r);
+  const tile = (title, saldo, usato) => saldo ? `<div class="tile"><span class="muted">${title}</span><b>${fmtQta(saldo.saldo)} ${saldo.unita}</b><span class="muted">ancora da usare</span>${usato ? `<span class="tile-note">Questo mese ne hai usate ${usato}</span>` : ''}</div>` : '';
   el.innerHTML = `
-    ${recSorted().length > 1 ? `<label class="field" style="max-width:220px;margin-bottom:8px">Mese archiviato<select id="sel-riassunto">${recSorted().map(item => `<option value="${esc(item.id)}" ${item.id === r.id ? 'selected' : ''}>${esc(periodoLabel(item.periodo))} · ${esc(tipoCedolinoLabel(item))}</option>`).join('')}</select></label>` : ''}
-    <div class="card summary-head"><p class="summary-period">${esc(periodoLabel(r.periodo))}</p><div class="summary-net">${fmtEur(r.totali.netto)} €</div><p class="summary-label">netti</p></div>
-    <div class="card"><h2>Dal lordo al netto</h2><p>Nel cedolino risultano <b>${fmtEur(r.totali.competenze)} €</b> di competenze, <b>${fmtEur(r.totali.trattenute)} €</b> di trattenute e <b>${fmtEur(r.totali.netto)} €</b> netti.</p>${flussoStipendioHTML(r)}</div>
-    <div class="card"><h2>Riassunto dei dati</h2>${commentiSempliciHTML(r)}</div>`;
-  const select = $('#sel-riassunto'); if (select) select.addEventListener('change', () => navigateTo('riassunto', select.value));
+    ${selettorePeriodo(r, 'riassunto')}
+    <section class="hero">
+      <p class="hero-period">${esc(periodoLabel(r.periodo))}${tipoCedolino(r) !== 'ordinario' ? ` · ${esc(tipoCedolinoLabel(r))}` : ''}</p>
+      <p class="hero-net">${fmtEur(r.totali.netto)} €</p>
+      <p class="hero-label">ti sono arrivati sul conto</p>
+      ${diff ? `<p class="hero-diff">${diff.delta > 0 ? '▲' : '▼'} ${fmtEur(Math.abs(diff.delta))} € ${diff.delta > 0 ? 'in più' : 'in meno'} rispetto a ${esc(diff.label)}</p>` : ''}
+    </section>
+    ${flussoHTML(r)}
+    ${extra.length ? `<section class="card"><h2>In più questo mese</h2><div class="rows">${extra.map(x => `<div class="row"><span>${esc(x.title)}<small>${esc(x.sub)}</small></span><b>+ ${fmtEur(x.amount)} €</b></div>`).join('')}</div></section>` : ''}
+    ${ferie || permessi ? `<section class="card"><h2>Ferie e permessi</h2><div class="tiles">
+      ${tile('Ferie', ferie, usatoNelMese(r, /ferie\s+god|godiment\w*\s+ferie/i))}
+      ${tile('Permessi', permessi, usatoNelMese(r, /(?:permess|\brol\b|ex\s*fest)[\s\S]*god/i))}
+    </div><p class="muted small">Ferie e permessi sono pagati: usarli non ti costa niente.</p></section>` : ''}
+    ${tfr ? `<section class="card"><h2>TFR, il tuo salvadanaio</h2>
+      <p class="lead">Ogni mese l’azienda mette da parte dei soldi per te. ${tfr.aFondi ? 'Nel tuo caso vanno in un fondo pensione.' : 'Li ricevi quando smetti di lavorare lì.'}</p>
+      <div class="rows">
+        ${tfr.quotaMese != null ? `<div class="row"><span>Messo da parte questo mese</span><b>+ ${fmtEur(tfr.quotaMese)} €</b></div>` : ''}
+        ${tfr.totale != null && !tfr.aFondi ? `<div class="row total"><span>Se lasciassi l’azienda oggi<small>prima delle tasse sul TFR</small></span><b class="brand big">${fmtEur(tfr.totale)} €</b></div>` : ''}
+      </div></section>` : ''}
+    <button type="button" class="link-card" id="summary-voci">Guarda ogni voce e come è calcolata<span aria-hidden="true">›</span></button>
+    ${controlliSempliciHTML(findings)}`;
+  bindSelettorePeriodo(el, 'riassunto');
+  $('#summary-voci').addEventListener('click', () => navigateTo('dettaglio', r.id));
+  return true;
 }
 
-function renderDettaglioCompleto(el, r, ccnl, findings) {
+function vociHTML(r) {
+  const entries = (r.voci || []).map((v, i) => ({ v, i, s: spiegaVoce(v) }));
+  const voceHTML = ({ v, i, s }, togli) => {
+    const expl = spiegazioneCompletaVoce(v, s).replace(/\s*Perché compare:[\s\S]*$/i, '').replace(/\s*Scalano dal saldo[^.]*\./i, '');
+    const calc = calcoloVoceParti(v, r);
+    const left = rimanenteVoce(v, r);
+    const check = controlloUtileVoce(v, s);
+    const amount = togli ? v.trattenuta : v.competenza;
+    return `<details class="voce">
+      <summary><span class="voce-name">${esc(nomeSemplice(v, s))}</span><span class="voce-amount">${amount != null ? importoFirmato(amount, togli) : ''}</span></summary>
+      <div class="voce-body">
+        <p>${esc(expl)}</p>
+        ${calcoloHTML(calc)}
+        ${left ? `<p class="voce-left">${esc(left)}</p>` : ''}
+        <p class="voce-orig">Sul cedolino: “${esc(v.descrizione || s.nome)}”${v.codice ? ` · codice ${esc(v.codice)}` : ''}</p>
+        ${check ? `<button type="button" class="voce-check" data-edit-voice="${i}">${esc(check)} <span>Correggi</span></button>` : ''}
+      </div>
+    </details>`;
+  };
+  const gruppo = (key, title, sub, totalHtml, body, cls = '') => `<details class="gruppo ${cls}" data-gruppo="${key}">
+    <summary><span class="gruppo-title"><b>${title}</b><small>${sub}</small></span>${totalHtml ? `<b class="gruppo-total">${totalHtml}</b>` : ''}</summary>
+    <div class="gruppo-body">${body}</div>
+  </details>`;
+  const competenze = entries.filter(e => e.s.cat === 'competenza' && e.v.competenza != null);
+  const trattenute = entries.filter(e => e.s.cat === 'trattenuta' && e.v.trattenuta != null);
+  const sum = (list, key) => list.reduce((total, e) => total + Number(e.v[key] || 0), 0);
+  const conta = (n) => `${n} ${n === 1 ? 'voce' : 'voci'}`;
+  const out = [];
+  if (competenze.length) out.push(gruppo('competenze', 'Quanto hai guadagnato', `Le voci che ti danno soldi · ${conta(competenze.length)}`,
+    `+ ${fmtEur(r.totali.competenze != null ? r.totali.competenze : sum(competenze, 'competenza'))} €`, competenze.map(e => voceHTML(e, false)).join(''), 'pos'));
+  if (trattenute.length) out.push(gruppo('trattenute', 'Quanto ti hanno tolto', `Pensione, tasse e piccole quote · ${conta(trattenute.length)}`,
+    `− ${fmtEur(r.totali.trattenute != null ? r.totali.trattenute : sum(trattenute, 'trattenuta'))} €`, trattenute.map(e => voceHTML(e, true)).join(''), 'neg'));
+  const tfr = tfrSemplice(r);
+  if (tfr) {
+    const rows = [];
+    if (tfr.quotaMese != null) rows.push(`<details class="voce"><summary><span class="voce-name">Messo da parte questo mese</span><span class="voce-amount">${fmtEur(tfr.quotaMese)} €</span></summary><div class="voce-body"><p>Ogni mese l’azienda mette da parte per te circa uno stipendio diviso 13,5. Non lo vedi nel netto: si accumula.</p></div></details>`);
+    if (tfr.totale != null) rows.push(`<details class="voce"><summary><span class="voce-name">${tfr.aFondi ? 'TFR maturato in azienda' : 'Se lasciassi l’azienda oggi'}</span><span class="voce-amount">${fmtEur(tfr.totale)} €</span></summary><div class="voce-body"><p>${tfr.aFondi ? 'Il TFR nuovo va al fondo pensione; questo è quello rimasto in azienda.' : 'Tutto quello che hai nel salvadanaio adesso. Su questa cifra si pagano poi delle tasse.'}</p>${tfr.parts.length > 1 ? calcoloHTML([...tfr.parts.flatMap((p, k) => [...(k ? [{ op: '+' }] : []), { v: `${fmtEur(p.v)} €`, l: p.l }]), { op: '=' }, { v: `${fmtEur(tfr.totale)} €`, l: 'il tuo TFR', res: true }]) : ''}</div></details>`);
+    out.push(gruppo('tfr', 'TFR, il tuo salvadanaio', 'Soldi che ricevi quando lasci l’azienda', tfr.quotaMese != null ? `+ ${fmtEur(tfr.quotaMese)} € al mese` : '', rows.join(''), 'pos'));
+  }
+  const presenze = r.presenze && Array.isArray(r.presenze.righe) ? r.presenze.righe.filter(row => Number.isFinite(Number(row.totale))) : [];
+  if (presenze.length) out.push(gruppo('presenze', 'Presenze del mese', 'Ore e giorni dal calendario, non sono euro', '',
+    `<div class="rows">${presenze.map(row => `<div class="row"><span>${esc(row.descrizione)}</span><span>${fmtQta(row.totale)} ${/ORE/i.test(row.unita || '') ? 'ore' : 'giorni'}</span></div>`).join('')}</div>`));
+  return out.join('');
+}
+
+function renderDettaglioCompleto(el, r, ccnl) {
+  const contratto = ccnl ? ccnl.nome : (r.ccnl.descrizione || 'Non riconosciuto');
   el.innerHTML = `
-  ${selettorePeriodo(r)}
-  <div class="card detail-overview"><div class="detail-overview-title"><p>${esc(periodoLabel(r.periodo))}</p><h2>Cedolino dettagliato</h2></div><div class="detail-metrics">
-    <div><span>Competenze</span><b>${fmtEur(r.totali.competenze)} €</b></div>
-    <div><span>Trattenute</span><b>${fmtEur(r.totali.trattenute)} €</b></div>
-    <div class="net"><span>Netto</span><b>${fmtEur(r.totali.netto)} €</b></div>
-  </div></div>
-  ${controlliSempliciHTML(findings)}
-  ${presenzeHTML(r)}
-  <div class="card voice-ledger-card"><h2>Tutte le voci</h2><p class="muted">Tocca la voce se vuoi approfondire.</p>${vociTableHTML(r)}</div>
-  <div class="card"><h2>Dati utili</h2><div class="kv">
-    <div><b>Azienda</b>${esc(r.azienda.nome || '—')}</div>
-    <div><b>Contratto</b>${esc(ccnl ? ccnl.nome : (r.ccnl.descrizione || 'Non identificato'))}${r.ccnl.cnel ? ` · CNEL ${esc(r.ccnl.cnel)}` : ''}</div>
-    <div><b>Livello</b>${esc(r.dipendente.livello || '—')}</div>
-    ${r.ratei && r.ratei.ferie && r.ratei.ferie.saldo != null ? `<div><b>Ferie rimaste</b>${fmtEur(r.ratei.ferie.saldo, 1)} ${/^(?:ORE|ORA|H)$/i.test(r.ratei.ferie.unita || '') ? 'ore' : 'giorni'}</div>` : ''}
-  </div></div>
+  ${selettorePeriodo(r, 'dettaglio')}
+  <div class="page-head">
+    <p class="hero-period">${esc(periodoLabel(r.periodo))}</p>
+    <h1>Le voci della busta</h1>
+    <p class="muted">Tocca una sezione per aprirla, poi una voce per vedere come è calcolata.</p>
+  </div>
+  <div class="card accordion">
+    ${vociHTML(r)}
+    <details class="gruppo" data-gruppo="contratto">
+      <summary><span class="gruppo-title"><b>Il tuo contratto</b><small>${esc(contratto)}${r.dipendente.livello ? ` · livello ${esc(r.dipendente.livello)}` : ''}</small></span></summary>
+      <div class="gruppo-body"><div class="rows">
+        <div class="row"><span>Azienda</span><span>${esc(r.azienda.nome || '—')}</span></div>
+        <div class="row"><span>Contratto</span><span>${esc(contratto)}${r.ccnl.cnel ? ` · CNEL ${esc(r.ccnl.cnel)}` : ''}</span></div>
+        <div class="row"><span>Livello</span><span>${esc(r.dipendente.livello || '—')}</span></div>
+      </div></div>
+    </details>
+    <div class="accordion-foot"><b>Ti resta (netto)</b><b class="brand">${fmtEur(r.totali.netto)} €</b></div>
+  </div>
   <div class="btnrow detail-actions"><button class="ghost" id="btn-edit">Modifica dati</button><button class="ghost" id="btn-print">Stampa</button><button class="danger" id="btn-del">Elimina</button></div>`;
+  bindSelettorePeriodo(el, 'dettaglio');
   bindDettaglioCommon(el, r);
 }
 
@@ -1742,8 +1828,7 @@ function bindDettaglioCommon(el, r) {
     if (!confirm('Eliminare questa busta dalla cronologia locale?')) return;
     Store.data.records = Store.data.records.filter(x => x.id !== r.id); Store.save();
     SourcePreviewCache.delete(r.id);
-    renderImporta();
-    showView('importa');
+    navigateTo('importa');
     toast('Busta eliminata.');
   });
 }
@@ -1867,7 +1952,7 @@ function renderConsigli() {
   <div class="card"><h2>Esplora i CCNL in archivio</h2>
     <label class="field">Contratto<select id="extra-ccnl">${allCcnl().map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('')}</select></label>
     <div id="extra-ccnl-info" style="margin-top:10px"></div>
-    <p class="muted small">In Italia esistono oltre 1.000 CCNL depositati. Se il tuo non c’è, puoi aggiungerlo da Backup → Editor CCNL copiando i valori dal testo ufficiale.</p>
+    <p class="muted small">In Italia esistono oltre 1.000 CCNL depositati. Se il tuo non c’è, puoi aggiungerlo dal menu ⋯ → Backup dei dati → Editor CCNL copiando i valori dal testo ufficiale.</p>
   </div>
   <div class="card"><h2>Fonti ufficiali</h2>
     ${Object.values(FONTI).map(f => `<div class="fonte-item"><a href="${esc(f.url)}" target="_blank" rel="noopener"><b>${esc(f.label)}</b></a><br><span class="muted small">${esc(f.cosa)}</span></div>`).join('')}
@@ -2123,6 +2208,18 @@ function openContributionPreview() {
   $('#cancel-fixture-export').addEventListener('click', closeInfo);
 }
 
+/* ---------- menu "altro" ---------- */
+function openMenu() {
+  $('#app-menu').hidden = false;
+  $('#menu-btn').setAttribute('aria-expanded', 'true');
+  const first = $('#app-menu .menu-item:not([hidden])'); if (first) first.focus();
+}
+function closeMenu() {
+  const menu = $('#app-menu'); if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  $('#menu-btn').setAttribute('aria-expanded', 'false');
+}
+
 /* ============================================================
    INSTALLAZIONE PWA
    ============================================================ */
@@ -2168,7 +2265,7 @@ async function installaApp() {
     <h4>Mac</h4>
     <p>Con <b>Safari 17 o successivo</b>: menu <b>File → Aggiungi al Dock</b>. Con Chrome o Edge: usa l’icona di installazione nella barra degli indirizzi o il menu <b>Installa BustaChiara</b>.</p>
     <p><b>Dopo l’installazione</b>, l’app compare insieme alle altre applicazioni e continua a funzionare offline. Serve una connessione solo alla prima apertura e per ricevere gli aggiornamenti.</p>
-    <p class="muted small">Non serve cercarla su App Store o Play Store: BustaChiara è una PWA e si installa direttamente dal sito. I dati restano separati su ogni dispositivo, quindi usa Backup → Esporta tutto per trasferirli.</p>`);
+    <p class="muted small">Non serve cercarla su App Store o Play Store: BustaChiara è una PWA e si installa direttamente dal sito. I dati restano separati su ogni dispositivo, quindi usa il menu ⋯ → Backup dei dati → Esporta tutto per trasferirli.</p>`);
   if (promptDisponibile) {
     const b = $('#avvia-installazione');
     if (b) b.addEventListener('click', async () => {
@@ -2195,11 +2292,15 @@ async function installaApp() {
   Store.load();
 
   // controlli barra superiore
-  $('#progetto-btn').addEventListener('click', () => navigateTo('progetto'));
-  $('#install-btn').addEventListener('click', installaApp);
-  $('#privacy-badge').addEventListener('click', () => openInfo('100% privacy', '<p>Il codice attuale elabora PDF, foto e numeri <b>interamente su questo dispositivo</b> e non invia il documento né i dati estratti.</p><p>La Content-Security-Policy blocca i servizi di terze parti; permette soltanto le risorse della stessa origine necessarie a caricare e aggiornare la PWA. Il PDF originale non viene salvato: restano soltanto i dati che confermi.</p><p class="muted small">La cronologia è nella memoria di questo browser. Per non perderla, crea periodicamente un backup dalla sezione Backup.</p>'));
-  $('#nav-back').addEventListener('click', () => history.back());
-  $('#nav-forward').addEventListener('click', () => history.forward());
+  $('#brand-home').addEventListener('click', (e) => { e.preventDefault(); navigateTo('importa'); });
+  $('#menu-btn').addEventListener('click', (e) => { e.stopPropagation(); $('#app-menu').hidden ? openMenu() : closeMenu(); });
+  $('#app-menu').addEventListener('click', (e) => {
+    const item = e.target.closest('[data-view]'); if (!item) return;
+    navigateTo(item.dataset.view);
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.menu-wrap')) closeMenu(); });
+  $('#install-btn').addEventListener('click', () => { closeMenu(); installaApp(); });
+  $('#privacy-badge').addEventListener('click', () => openInfo('Come proteggiamo i tuoi dati', '<p>Il codice attuale elabora PDF, foto e numeri <b>interamente su questo dispositivo</b> e non invia il documento né i dati estratti.</p><p>La Content-Security-Policy blocca i servizi di terze parti; permette soltanto le risorse della stessa origine necessarie a caricare e aggiornare la PWA. Il PDF originale non viene salvato: restano soltanto i dati che confermi.</p><p class="muted small">La cronologia è nella memoria di questo browser. Per non perderla, crea periodicamente un backup dal menu ⋯ → Backup dei dati.</p>'));
   try { history.scrollRestoration = 'manual'; } catch (e) { /* browser datato */ }
   window.addEventListener('popstate', handleHistoryPopState);
   aggiornaPulsanteInstallazione();
@@ -2216,15 +2317,10 @@ async function installaApp() {
     const g = GLOSSARIO[b.dataset.info];
     if (g) openInfo(g.nome, `<p>${esc(g.testo)}</p>`);
   });
-  document.body.addEventListener('click', (e) => {
-    const row = e.target.closest('.voce-row'); if (!row || e.target.closest('.ibtn')) return;
-    const v = detailVoci[+row.dataset.vocei];
-    if (v) { const s = spiegaVoce(v); openInfo(s.nome + (v.descrizione && v.descrizione !== s.nome ? ` (“${v.descrizione}”)` : ''), vociInfoHtml(v)); }
-  });
   $('#popover-close').addEventListener('click', closeInfo);
   $('#popover-backdrop').addEventListener('click', closeInfo);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeInfo();
+    if (e.key === 'Escape') { closeMenu(); closeInfo(); }
     if (e.key === 'Tab' && !$('#popover').hidden) {
       const focusabili = $$('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])', $('#popover-card')).filter(x => !x.disabled);
       if (!focusabili.length) return;
