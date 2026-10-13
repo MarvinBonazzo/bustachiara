@@ -1071,10 +1071,6 @@ async function parseDaOcr(canvases, status) {
 /* ============================================================
    VERIFICA (conferma/correzione prima del salvataggio)
    ============================================================ */
-function emptyRecord() {
-  const now = new Date();
-  return { documento: { tipo: 'ordinario' }, periodo: { mese: now.getMonth() + 1, anno: now.getFullYear() }, azienda: {}, dipendente: {}, ccnl: {}, elementi: { altri: [] }, orario: {}, voci: [], presenze: { righe: [] }, tfr: {}, progressivi: {}, ratei: {}, totali: {}, meta: { fonte: 'manuale', software: 'inserimento manuale', settore: 'privato-lul', fields: {}, candidates: {}, reconciliation: {}, pageSizes: [] } };
-}
 
 function rememberSourcePreview(record, previewPages) {
   if (!record || !record.id || !previewPages || !previewPages.length) return;
@@ -1466,16 +1462,9 @@ function renderDettaglio(id) {
   if (sel) sel.addEventListener('change', () => navigateTo('dettaglio', sel.value));
 }
 
-const LV_LABEL = { ok: 'OK', info: 'Info', warn: 'Verifica', alert: 'Anomalia' };
 /* Sezione richiudibile del Dettaglio (aperta di default) */
 function sez(titleHtml, bodyHtml, open = true) {
   return `<details class="card sez" ${open ? 'open' : ''}><summary><h2>${titleHtml}</h2></summary><div class="sez-body">${bodyHtml}</div></details>`;
-}
-function findingHTML(f) {
-  return `<div class="finding ${f.livello}"><span class="lvchip ${f.livello}">${LV_LABEL[f.livello]}</span><div>
-    <h4>${esc(f.titolo)} <span class="badge dato">${esc(f.area)}</span></h4><p>${esc(f.dettaglio)}</p>
-    ${f.formula ? `<p class="formula">${esc(f.formula)}</p>` : ''}${fontiHTML(f.fonti)}
-  </div></div>`;
 }
 function vociTableHTML(r) {
   if (!r.voci || !r.voci.length) return '<p class="muted">Non sono state trovate righe retributive da spiegare.</p>';
@@ -1758,57 +1747,6 @@ function bindDettaglioCommon(el, r) {
     toast('Busta eliminata.');
   });
 }
-function elementiCard(r) {
-  const e = r.elementi || {};
-  const rows = [['Paga base', e.pagaBase, 'pagabase'], ['Contingenza', e.contingenza, 'contingenza'], ['Superminimo', e.superminimo, 'superminimo'], ['Scatti anzianità', e.scatti, 'scatti'], ['E.D.R.', e.edr, null], ['Totale', e.totale, 'elementi']].filter(x => x[1] != null);
-  if (!rows.length && !r.orario.prossimoScatto) return '';
-  return sez(`Elementi fissi della retribuzione ${iBtn('elementi')}`,
-  `<p class="muted small">Sono i “mattoni” fissi della tua paga mensile: da qui nasce la paga oraria (totale ÷ divisore del contratto). Tocca la “i” accanto a ogni nome per capirlo.</p>
-  <div class="kv">
-    ${rows.map(([l, v, k]) => `<div><b>${l} ${k ? iBtn(k) : ''}</b>${fmtEur(v)} €</div>`).join('')}
-    ${r.orario.prossimoScatto ? `<div><b>Prossimo scatto anzianità ${iBtn('scatti')}</b>${esc(r.orario.prossimoScatto)}</div>` : ''}
-  </div>`);
-}
-function tfrCard(r) {
-  const t = r.tfr || {};
-  if (t.retribUtile == null && t.fondo3112 == null && t.quotaAnno == null) return '';
-  return sez(`TFR — la tua liquidazione ${iBtn('tfr')}`,
-  `<p class="muted small">Ogni mese una parte di stipendio viene messa da parte: la ricevi quando il rapporto finisce (o va al fondo pensione, se hai scelto così). Formula: retribuzione utile ÷ 13,5 − 0,50% dell’imponibile INPS.</p>
-  <div class="kv">
-    ${t.retribUtile != null ? `<div><b>Retribuzione utile (mese) ${iBtn('retribuzioneUtileTfr')}</b>${fmtEur(t.retribUtile)} €</div>` : ''}
-    ${t.quotaMese != null ? `<div><b>Quota del mese</b>${fmtEur(t.quotaMese)} €</div>` : ''}
-    ${t.fondo3112 != null ? `<div><b>Accantonato al 31/12</b>${fmtEur(t.fondo3112)} €</div>` : ''}
-    ${t.rivalutazione != null ? `<div><b>Rivalutazione ${iBtn('rivalutazioneTfr')}</b>${fmtEur(t.rivalutazione)} €</div>` : ''}
-    ${t.quotaAnno != null ? `<div><b>Quota anno in corso</b>${fmtEur(t.quotaAnno)} €</div>` : ''}
-    <div><b>Destinazione</b>${t.aFondi ? 'Fondo pensione (' + fmtEur(t.aFondi) + ' €)' : 'In azienda'}</div>
-  </div>
-  <p class="muted small">Per la scelta azienda/fondo pensione vedi la scheda Extra.</p>${fontiHTML(['normattiva', 'covip'])}`);
-}
-function rateiCard(r) {
-  const rt = r.ratei || {};
-  if (!rt.ferie && !rt.permessi) return '';
-  const riga = (nome, d, unita, key) => d ? `<div><b>${nome} ${iBtn(key)}</b>
-    residuo anno prec. ${iBtn('residuoAp')} ${fmtEur(d.residuoAp, 1)} · maturato ${iBtn('maturato')} ${fmtEur(d.maturato, 1)} · goduto ${iBtn('goduto')} ${fmtEur(d.goduto, 1)} · <b>saldo ${iBtn('saldo')} ${fmtEur(d.saldo, 1)} ${unita}</b></div>` : '';
-  return sez(`Ferie e permessi (ratei) ${iBtn('rateo')}`,
-  `<p class="muted small">Quanto riposo pagato hai accumulato, usato e quanto te ne resta.</p>
-  <div class="kv" style="grid-template-columns:1fr">
-    ${riga('Ferie', rt.ferie, /^(?:ORE|ORA|H)$/i.test((rt.ferie && rt.ferie.unita) || '') ? 'ore' : 'giorni', 'ferie')}
-    ${riga('Permessi (ROL)', rt.permessi, 'ore', 'rol')}
-    ${riga('Ex festività', rt.exFestivita, 'ore', 'exfestivita')}
-  </div>`);
-}
-function progressiviCard(r) {
-  const p = r.progressivi || {};
-  if (p.impInps == null && p.impIrpef == null) return '';
-  return sez(`Totali da inizio anno ${iBtn('progressivi')}`,
-  `<div class="kv">
-    ${p.impInps != null ? `<div><b>Imponibile INPS ${iBtn('imponibile')}</b>${fmtEur(p.impInps)} €</div>` : ''}
-    ${p.impIrpef != null ? `<div><b>Imponibile IRPEF ${iBtn('irpef')}</b>${fmtEur(p.impIrpef)} €</div>` : ''}
-    ${p.irpefPagata != null ? `<div><b>IRPEF già pagata</b>${fmtEur(p.irpefPagata)} €</div>` : ''}
-    ${p.impInail != null ? `<div><b>Imponibile INAIL</b>${fmtEur(p.impInail)} €</div>` : ''}
-  </div>
-  <p class="muted small">Servono per il conguaglio ${iBtn('conguaglio')} di fine anno e per confrontare la Certificazione Unica ${iBtn('cu')} a marzo.</p>`);
-}
 function ccnlInfoCard(c, r) {
   const warn = (v) => v && v.verificato === false ? ' <span class="badge dato">da verificare</span>' : '';
   return sez(`Il tuo contratto: ${esc(c.nome)} ${iBtn('ccnl')}`,
@@ -1830,24 +1768,6 @@ function ccnlInfoCard(c, r) {
   ${c.note ? `<p class="muted small"><b>Nota:</b> ${esc(c.note)}</p>` : ''}
   <p class="muted small">“Da verificare” = valore indicativo: la fonte che fa fede è il testo del CCNL depositato al CNEL e le tabelle dei firmatari.</p>
   ${fontiHTML([...(c.fontiTesto || []), c.fondoPensione && c.fondoPensione.fonte, c.sanitario && c.sanitario.fonte].filter(Boolean))}`);
-}
-
-/* ============================================================
-   GRAFICO ANDAMENTO
-   ============================================================ */
-function sparkSVG(recs) {
-  const pts = recs.filter(r => r.totali.netto != null);
-  const W = 900, H = 150, P = 26;
-  const vs = pts.map(r => r.totali.netto);
-  const min = Math.min(...vs) * 0.97, max = Math.max(...vs) * 1.03;
-  const x = i => P + (W - 2 * P) * (pts.length === 1 ? 0.5 : i / (pts.length - 1));
-  const y = v => H - P - (H - 2 * P) * ((v - min) / (max - min || 1));
-  const line = vs.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="andamento netto">
-    <path d="${line}" fill="none" stroke="var(--brand)" stroke-width="2.5"/>
-    ${vs.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3.2" fill="var(--brand)"><title>${esc(periodoLabel(pts[i].periodo))}: ${fmtEur(v)} €</title></circle>`).join('')}
-    ${vs.map((v, i) => (pts.length <= 14 || i % 2 === 0) ? `<text x="${x(i).toFixed(1)}" y="${H - 6}" font-size="9.5" text-anchor="middle" fill="var(--muted)">${esc((MESI_NOMI[pts[i].periodo.mese] || '').slice(0, 3))} ${String(pts[i].periodo.anno).slice(2)}</text>` : '').join('')}
-  </svg>`;
 }
 
 /* ============================================================
@@ -1981,7 +1901,7 @@ function renderProgetto() {
   <div class="card"><h2>Un progetto Open Source</h2>
     <p>BustaChiara è un progetto <b>Open Source</b>: il codice è pubblico e chiunque può contribuire a rendere il servizio più chiaro, preciso e accessibile.</p>
     <p>Puoi aiutare segnalando un problema, proponendo una funzione, migliorando le spiegazioni, verificando un CCNL o inviando direttamente una modifica al codice. <b>Ogni persona che contribuirà concretamente al progetto verrà riconosciuta nella lista dei contributori.</b></p>
-    <p><a href="https://github.com/ShivenBonazzo/bustachiara" target="_blank" rel="noopener"><b>Apri il progetto su GitHub →</b></a></p>
+    <p><a href="https://github.com/MarvinBonazzo/bustachiara" target="_blank" rel="noopener"><b>Apri il progetto su GitHub →</b></a></p>
   </div>
   <div class="card"><h2>Privacy — come funziona davvero</h2>
     <p>Una busta paga contiene l’elenco più sensibile di informazioni che esista su di te: quanto guadagni, dove lavori, il tuo codice fiscale, i tuoi prestiti (cessioni del quinto), a volte perfino dati sulla salute (malattie, permessi 104). Caricarla su un servizio online — o incollarla in una chat con un’intelligenza artificiale — significa affidare tutto questo a un’azienda terza, alle sue policy e ai suoi archivi.</p>
@@ -2201,135 +2121,6 @@ function openContributionPreview() {
     closeInfo(); toast('Fixture creata: aprila e rileggila prima di condividerla.');
   });
   $('#cancel-fixture-export').addEventListener('click', closeInfo);
-}
-
-/* ============================================================
-   BUSTA DI ESEMPIO (dati inventati ma internamente coerenti)
-   ============================================================ */
-function demoRecord() {
-  return enrichDemoRecord({
-    id: uid(),
-    documento: { tipo: 'ordinario' },
-    periodo: { mese: 6, anno: 2026, label: 'Giugno 2026' },
-    azienda: { nome: 'ALBERGO ESEMPIO S.R.L.', cf: '01234567890' },
-    dipendente: { nome: 'MARIO ROSSI', cf: 'RSSMRA90A01H501X', livello: '4', qualifica: 'IMP', dataAssunzione: '06-01-2025' },
-    ccnl: { cnel: 'H052', descrizione: 'Alberghi Imprese Confcommercio' },
-    ccnlId: 'turismo-confcommercio',
-    elementi: { pagaBase: 1688.98, superminimo: 311.02, totale: 2000.00, altri: [] },
-    orario: { oreOrdinarie: 160, prossimoScatto: '2-2028' },
-    voci: [
-      { codice: 'Z00001', descrizione: 'Retribuzione', base: 11.62791, rifQta: 160, rifUnita: 'ORE', trattenuta: null, competenza: 1860.47 },
-      { codice: 'Z00250', descrizione: 'Ferie godute', base: 11.62791, rifQta: 8, rifUnita: 'ORE', trattenuta: null, competenza: 93.02 },
-      { codice: 'Z00255', descrizione: 'Permessi Rol goduti', base: 11.62791, rifQta: 4, rifUnita: 'ORE', trattenuta: null, competenza: 46.51 },
-      { codice: 'Z50000', descrizione: "13ma Mensilita'", base: 11.62791, rifQta: 14.33333, rifUnita: 'ORE', trattenuta: null, competenza: 166.67 },
-      { codice: 'Z50022', descrizione: "14ma Mensilita'", base: 11.62791, rifQta: 14.33333, rifUnita: 'ORE', trattenuta: null, competenza: 166.67 },
-      { codice: '000030', descrizione: 'Straordinario 15%', base: 13.3721, rifQta: 4, rifUnita: 'ORE', trattenuta: null, competenza: 53.49 },
-      { codice: 'Z31210', descrizione: 'Contributo Fondo FAST', base: null, rifQta: null, rifUnita: '', trattenuta: 2.00, competenza: null },
-      { codice: 'Z00000', descrizione: 'Contributo IVS', base: 2387.00, rifQta: 9.19, rifUnita: '%', trattenuta: 219.36, competenza: null },
-      { codice: 'Z00054', descrizione: 'FIS D.Lgs.148/2015 fino 15 dip', base: 2387.00, rifQta: 0.26667, rifUnita: '%', trattenuta: 6.37, competenza: null },
-      { codice: 'F02000', descrizione: 'Imponibile IRPEF', base: 2161.10, rifQta: null, rifUnita: '', trattenuta: null, competenza: null },
-      { codice: 'F02010', descrizione: 'IRPEF lorda', base: 497.05, rifQta: null, rifUnita: '', trattenuta: null, competenza: null },
-      { codice: 'F02500', descrizione: 'Detrazioni lav.dip.', base: 180.35, rifQta: null, rifUnita: '', trattenuta: null, competenza: null },
-      { codice: 'F02801', descrizione: 'Ulteriore detrazione L.207/24', base: 83.33, rifQta: null, rifUnita: '', trattenuta: null, competenza: null },
-      { codice: 'F03020', descrizione: 'Ritenute IRPEF', base: null, rifQta: null, rifUnita: '', trattenuta: 233.37, competenza: null },
-      { codice: 'F09110', descrizione: 'Addizionale regionale', base: null, rifQta: null, rifUnita: '', trattenuta: 20.00, competenza: null },
-    ],
-    tfr: { retribUtile: 2386.83, quotaMese: 164.86, fondo3112: 900.00, rivalutazione: 20.00, quotaAnno: 989.16, aFondi: null },
-    progressivi: { impInps: 14322.00, impIrpef: 12966.60, irpefPagata: 1400.22 },
-    ratei: { ferie: { residuoAp: 4, maturato: 13, goduto: 6, saldo: 11, unita: 'GG' }, permessi: { residuoAp: 10, maturato: 52, goduto: 20, saldo: 42, unita: 'ORE' } },
-    totali: { competenze: 2386.83, trattenute: 481.10, arrotondamento: 0.27, netto: 1906.00 },
-    meta: { fonte: 'esempio', software: 'Zucchetti (simulato)', settore: 'privato-lul', fields: {}, candidates: {}, reconciliation: {}, pageSizes: [] },
-  });
-}
-
-function enrichDemoRecord(record) {
-  record.meta.pageSizes = [{ width: 600, height: 842 }];
-  const evidence = {
-    'ccnl.cnel': [48, 694, 220, 20], 'ccnl.descrizione': [48, 668, 300, 20],
-    'dipendente.nome': [48, 720, 220, 20], 'dipendente.cf': [318, 720, 220, 20],
-    'elementi.pagaBase': [48, 600, 150, 22], 'elementi.superminimo': [210, 600, 150, 22], 'elementi.totale': [372, 600, 150, 22],
-    'totali.competenze': [310, 132, 220, 22], 'totali.trattenute': [310, 104, 220, 22], 'totali.netto': [310, 64, 220, 26],
-  };
-  for (const [path, [x, y, w, h]] of Object.entries(evidence)) record.meta.fields[path] = {
-    confidence: .96, source: 'esempio', method: 'testo-coordinate', page: 0, bbox: { x, y, w, h }, snippet: 'Documento dimostrativo', visualTarget: 'value',
-  };
-  (record.voci || []).forEach((voice, index) => {
-    if (index > 8) return;
-    voice.meta = { source: 'esempio', confidence: .98, visual: { page: 0, bbox: { x: 44, y: 523 - index * 31, w: 500, h: 26 }, snippet: voice.descrizione } };
-    voice.descrizioneOriginale = voice.descrizione;
-  });
-  return record;
-}
-
-function demoPreviewDataUrl() {
-  const rows = [
-    ['Z00001', 'Retribuzione', '1.860,47'], ['Z00250', 'Ferie godute', '93,02'], ['Z00255', 'Permessi ROL', '46,51'],
-    ['Z50000', '13ma mensilità', '166,67'], ['Z50022', '14ma mensilità', '166,67'], ['000030', 'Straordinario 15%', '53,49'],
-    ['Z31210', 'Fondo FAST', '-2,00'], ['Z00000', 'Contributo IVS', '-219,36'], ['F03020', 'Ritenute IRPEF', '-233,37'],
-  ];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="842" viewBox="0 0 600 842">
-    <rect width="600" height="842" fill="#fff"/><rect x="30" y="30" width="540" height="782" rx="4" fill="none" stroke="#b8c5c0"/>
-    <text x="48" y="68" font-family="Arial" font-size="23" font-weight="700" fill="#12382c">CEDOLINO PAGA — ESEMPIO</text>
-    <text x="48" y="92" font-family="Arial" font-size="12" fill="#557069">Dati interamente inventati</text>
-    <text x="48" y="118" font-family="Arial" font-size="12">MARIO ROSSI</text><text x="318" y="118" font-family="Arial" font-size="12">RSSMRA90A01H501X</text>
-    <text x="48" y="144" font-family="Arial" font-size="12">CNEL H052</text><text x="48" y="170" font-family="Arial" font-size="12">Alberghi Imprese Confcommercio</text>
-    <line x1="48" y1="190" x2="550" y2="190" stroke="#ccd6d2"/>
-    <text x="48" y="216" font-family="Arial" font-size="11" fill="#557069">PAGA BASE</text><text x="210" y="216" font-family="Arial" font-size="11" fill="#557069">SUPERMINIMO</text><text x="372" y="216" font-family="Arial" font-size="11" fill="#557069">TOTALE ELEMENTI</text>
-    <text x="48" y="238" font-family="Arial" font-size="14" font-weight="700">1.688,98</text><text x="210" y="238" font-family="Arial" font-size="14" font-weight="700">311,02</text><text x="372" y="238" font-family="Arial" font-size="14" font-weight="700">2.000,00</text>
-    <text x="48" y="278" font-family="Arial" font-size="11" font-weight="700">CODICE</text><text x="132" y="278" font-family="Arial" font-size="11" font-weight="700">DESCRIZIONE</text><text x="500" y="278" text-anchor="end" font-family="Arial" font-size="11" font-weight="700">IMPORTO</text>
-    ${rows.map((row, index) => `<g transform="translate(0 ${index * 31})"><line x1="48" y1="292" x2="550" y2="292" stroke="#e5ebe8"/><text x="48" y="313" font-family="Arial" font-size="11">${row[0]}</text><text x="132" y="313" font-family="Arial" font-size="11">${row[1]}</text><text x="500" y="313" text-anchor="end" font-family="Arial" font-size="11">${row[2]}</text></g>`).join('')}
-    <line x1="300" y1="680" x2="550" y2="680" stroke="#8da69c"/><text x="310" y="706" font-family="Arial" font-size="12">TOTALE COMPETENZE</text><text x="530" y="706" text-anchor="end" font-family="Arial" font-size="12" font-weight="700">2.386,83</text>
-    <text x="310" y="734" font-family="Arial" font-size="12">TOTALE TRATTENUTE</text><text x="530" y="734" text-anchor="end" font-family="Arial" font-size="12" font-weight="700">481,10</text>
-    <rect x="300" y="748" width="250" height="42" rx="5" fill="#e9f5ef"/><text x="310" y="774" font-family="Arial" font-size="14" font-weight="700" fill="#075b42">NETTO IN BUSTA</text><text x="530" y="774" text-anchor="end" font-family="Arial" font-size="14" font-weight="700" fill="#075b42">1.906,00</text>
-  </svg>`;
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-}
-
-
-/* ============================================================
-   RIASSUNTO IN PAROLE SEMPLICISSIME
-   ============================================================ */
-function apriRiassunto() {
-  const r = Store.data.records.find(x => x.id === currentDetailId) || recSorted().slice(-1)[0];
-  if (!r) { openInfo('Il tuo mese in breve', '<p>Non c’è ancora nessuna busta salvata. Vai su Home, carica la tua busta paga e qui troverai il riassunto del mese in poche righe semplici.</p>'); return; }
-  const t = r.totali || {};
-  let contributi = 0, tasse = 0, altre = 0;
-  for (const v of r.voci) {
-    if (!v.trattenuta) continue;
-    const dsc = v.descrizione || '';
-    if (/ivs|inps|fis\b|cigs|contribut/i.test(dsc) && !/fondo\s|fast|est\b|ebt|bilat|sanit/i.test(dsc)) contributi += v.trattenuta;
-    else if (/irpef|addizionale|imposta|integrativ/i.test(dsc)) tasse += v.trattenuta;
-    else altre += v.trattenuta;
-  }
-  const ccnl = r.ccnlId ? ccnlById(r.ccnlId) : null;
-  const anomalie = eseguiControlli(r, ccnl, Store.data.records).filter(f => f.livello === 'alert').length;
-  const p = [];
-  if (t.competenze != null) p.push(`Il tuo stipendio di partenza questo mese era di <b>${fmtEur(t.competenze)} €</b>. È la cifra piena, prima di togliere qualsiasi cosa.`);
-  // barra: dove vanno i tuoi soldi
-  if (t.competenze && t.netto != null) {
-    const tot = t.competenze;
-    const seg = [
-      { cls: 'soldi-netto', val: t.netto, nome: 'A te (netto)' },
-      { cls: 'soldi-contributi', val: contributi, nome: 'Pensione e tutele (INPS)' },
-      { cls: 'soldi-tasse', val: tasse, nome: 'Tasse' },
-      { cls: 'soldi-altre', val: altre, nome: 'Piccole quote' },
-    ].filter(s => s.val > 0);
-    const colori = { 'soldi-netto': 'var(--brand)', 'soldi-contributi': '#e08a2e', 'soldi-tasse': '#d0342c', 'soldi-altre': '#b9b9c0' };
-    p.push(`<b>Dove vanno i tuoi soldi:</b>
-      <div class="soldi-bar">${seg.map(s => `<div class="${s.cls}" style="width:${(s.val / tot * 100).toFixed(1)}%" title="${esc(s.nome)}: ${fmtEur(s.val)} €"></div>`).join('')}</div>
-      <span class="soldi-legenda">${seg.map(s => `<span><span class="dot" style="background:${colori[s.cls]}"></span>${esc(s.nome)}: <b>${fmtEur(s.val)} €</b> (${fmtEur(s.val / tot * 100, 0)}%)</span>`).join('')}</span>`);
-  }
-  if (t.trattenute != null) p.push(`In tutto sono stati tolti <b>${fmtEur(t.trattenute)} €</b>: una parte va messa da parte per la tua futura pensione, una parte sono tasse, e pochi euro sono piccole quote (per esempio l’assicurazione sanitaria del tuo contratto).`);
-  if (t.netto != null) p.push(`Sul conto ti sono arrivati <b>${fmtEur(t.netto)} €</b>: questo è il famoso “netto”.`);
-  if (r.ratei && r.ratei.ferie) p.push(`Hai ancora <b>${fmtEur(r.ratei.ferie.saldo, 1)} giorni di ferie</b>${r.ratei.permessi ? ` e <b>${fmtEur(r.ratei.permessi.saldo, 1)} ore di permessi</b>` : ''} da usare. Sono giorni e ore pagate: usarle non ti costa nulla.`);
-  if (r.tfr && (r.tfr.fondo3112 != null || r.tfr.quotaAnno != null)) {
-    const tot = (r.tfr.fondo3112 || 0) + (r.tfr.quotaAnno || 0);
-    p.push(`C’è anche un salvadanaio che non vedi in busta: la liquidazione (TFR). Finora dentro ci sono circa <b>${fmtEur(tot, 0)} €</b>${r.tfr.aFondi ? ', custoditi in un fondo pensione' : ', custoditi dall’azienda'}. Li ricevi quando cambi lavoro o vai in pensione.`);
-  }
-  p.push(anomalie
-    ? `<b>Attenzione:</b> ${anomalie === 1 ? 'c’è una cosa che non torna' : 'ci sono ' + anomalie + ' cose che non tornano'} in questa busta. Aprila nella scheda Dettaglio: la spiegazione è in cima.`
-    : `Buone notizie: i conti di questa busta tornano. I controlli automatici non hanno trovato niente di strano.`);
-  openInfo(`Il tuo mese in breve — ${periodoLabel(r.periodo)}`, p.map(x => `<p>${x}</p>`).join(''));
 }
 
 /* ============================================================

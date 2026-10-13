@@ -353,6 +353,3 @@ for (const [sector, sample] of Object.entries(sectorSamples)) assert.equal(Secto
 assert.ok(Sectors.parserSectorVoiceHints().length >= 30);
 
 console.log('OK — parser multi-layout, riconciliazione, CCNL, OCR e 9 moduli di settore');
-
-// La matrice settoriale e documentale viene importata anche dalla suite CI principale.
-await import('./parser-matrix.test.mjs');

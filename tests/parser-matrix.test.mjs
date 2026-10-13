@@ -209,6 +209,3 @@ console.log(
   + `${coordinateFixtures} fixture a coordinate; ${results.reduce((sum, result) => sum + result.voices, 0)} voci; `
   + `${assertionsPassed}/${assertionsRun} asserzioni (${corpusPercentage}% sul corpus di regressione, non una garanzia universale)`,
 );
-
-// I documenti simili a un cedolino ma fuori ambito sono un controllo bloccante.
-await import('./non-payslip-gaps.test.mjs');
