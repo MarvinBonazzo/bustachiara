@@ -86,9 +86,13 @@ function itNum(value) {
   return Number.isFinite(n) ? (negative ? -Math.abs(n) : n) : null;
 }
 
+// Formato italiano con separatore delle migliaia sempre presente (1.906,00):
+// toLocaleString('it-IT') lo omette sotto le 10.000 unità.
 function fmtEur(v, dec = 2) {
   if (v == null || isNaN(v)) return '—';
-  return v.toLocaleString('it-IT', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  const [int, frac] = Math.abs(Number(v)).toFixed(dec).split('.');
+  const sign = Number(v) < 0 && Number(`${int}.${frac || 0}`) !== 0 ? '-' : '';
+  return sign + int.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (frac ? ',' + frac : '');
 }
 
 // Alcuni PDF Zucchetti estraggono gli spazi come una "s" minuscola.

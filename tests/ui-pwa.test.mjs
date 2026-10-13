@@ -14,99 +14,76 @@ function sourceBetween(start, end) {
   return uiSource.slice(from, to);
 }
 
-const commentsContext = {
-  fmtEur: value => Number(value).toFixed(2).replace('.', ','),
-  recSorted: () => [],
-  employerKey: () => '',
-  tipoCedolino: () => 'ordinario',
-  periodoKey: () => 0,
-  periodoLabel: () => '',
+const fmtEurTest = (value, dec = 2) => {
+  const [int, frac] = Math.abs(Number(value)).toFixed(dec).split('.');
+  return (Number(value) < 0 ? '-' : '') + int.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (frac ? ',' + frac : '');
 };
-vm.createContext(commentsContext);
+
+// ---------- Riassunto: extra del mese, ferie/permessi usati, TFR ----------
+const summaryContext = {
+  fmtEur: fmtEurTest, MESI_NOMI: ['', 'Gennaio'],
+  recSorted: () => [], employerKey: () => '', tipoCedolino: () => 'ordinario', periodoKey: () => 0, periodoLabel: () => '',
+  spiegaVoce: voice => ({ nome: voice.nome || voice.descrizione, cat: voice.cat }),
+  Parser: { calcoloVoce: () => null },
+};
+vm.createContext(summaryContext);
 vm.runInContext(
-  sourceBetween('function importoVoci', 'function commentiSempliciHTML')
-    + '\nthis.commentiSempliciUnderTest = commentiSemplici;',
-  commentsContext,
+  sourceBetween('const isOre = ', 'function testoControlloSemplice')
+    + '\nthis.fns = { extraDelMese, usatoNelMese, tfrSemplice, nomeSemplice, rimanenteVoce, calcoloVoceParti, importoFirmato };',
+  summaryContext,
 );
-const comments = commentsContext.commentiSempliciUnderTest({
-  id: 'fixture',
-  voci: [{ descrizione: 'Magg. per riposo settimanale non di domenica (10%)', competenza: 13.13 }],
-  ratei: {},
-  tfr: {},
-  totali: {},
-});
-assert.equal(comments[0].title, 'Riposo settimanale');
-assert.doesNotMatch(comments[0].text, /legate alle domeniche/i);
-
-const broadComments = commentsContext.commentiSempliciUnderTest({
-  id: 'broad',
-  voci: [
-    { descrizione: 'Straordinario 25 per cento', competenza: 125, rifQta: 10 },
-    { descrizione: 'Indennita malattia INPS', competenza: 180 },
-    { descrizione: 'Cessione del quinto', trattenuta: 210 },
-  ],
-  derivati: { ivs: { importo: 172 }, ritenuteIrpef: 280, addRegionale: 22, addComunale: 9 },
-  ratei: { ferie: { saldo: 12, unita: 'GG' }, permessi: { saldo: 18, unita: 'ORE' } },
-  tfr: { quotaMese: 115 },
-  totali: { competenze: 2200, trattenute: 650, netto: 1550 },
-});
-for (const title of ['Ore in più', 'Assenze pagate', 'Dal lordo al netto', 'Contributi', 'Imposte', 'Prestiti o trattenute personali', 'Riposo disponibile', 'Permessi disponibili', 'TFR']) {
-  assert.ok(broadComments.some(comment => comment.title === title), `commento ampio mancante: ${title}`);
-}
-assert.ok(broadComments.length <= 12);
-
-const attendanceComments = commentsContext.commentiSempliciUnderTest({
-  id: 'attendance-hours',
-  presenze: { righe: [{ descrizione: 'Ferie/Permessi/Banca ore', tipo: 'assenza', totale: 20.01, unita: 'ORE' }] },
-  voci: [{ descrizione: 'Ferie godute', rifQta: 20.01, rifUnita: 'ORE' }],
-  ratei: {}, tfr: {}, totali: {},
-});
-const attendanceComment = attendanceComments.find(comment => comment.title === 'Assenze pagate');
-assert.ok(attendanceComment, 'la tabella presenze deve generare un commento semplice');
-assert.match(attendanceComment.text, /20,01 ore/i);
-assert.doesNotMatch(attendanceComment.text, /20,01 €/i, 'una quantità in ore non deve essere presentata come denaro');
-
-const voiceContext = {
-  esc: value => String(value),
-  aliasKey: value => String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(),
-  fmtEur: value => Number(value).toFixed(2).replace('.', ','),
-  spiegaVoce: voice => ({ nome: voice.nome, cat: voice.cat, cosa: voice.cosa, controlla: '' }),
-  spiegazioneBreveVoce: (_voice, explanation) => explanation.cosa,
-  controlloUtileVoce: voice => voice.warning || '',
-};
-vm.createContext(voiceContext);
-vm.runInContext(sourceBetween('function vociTableHTML', 'function importoVoci') + '\nthis.vociTableUnderTest = vociTableHTML;', voiceContext);
-const voicesHtml = voiceContext.vociTableUnderTest({ voci: [
-  { descrizione: 'Retribuzione ordinaria', nome: 'Retribuzione ordinaria', cat: 'competenza', cosa: 'È la paga normale del mese.', competenza: 1600, warning: 'Il calcolo base × quantità non coincide con l’importo: confronta questa riga col documento.' },
-  { descrizione: 'Contributo INPS', nome: 'Contributi INPS', cat: 'trattenuta', cosa: 'Serve a pensione e tutele.', trattenuta: 147 },
-  { descrizione: 'Ore lavorate', nome: 'Ore lavorate', cat: 'dato', cosa: 'Indica le ore del mese.' },
-  { descrizione: 'Recupero competenza', nome: 'Recupero competenza', cat: 'competenza', cosa: 'Corregge una somma precedente.', competenza: -50 },
+const S = summaryContext.fns;
+const extra = S.extraDelMese({ voci: [
+  { descrizione: 'Straordinario 25 per cento', competenza: 125, rifQta: 10 },
+  { descrizione: "13ma Mensilita'", competenza: 166.67 },
+  { descrizione: 'Retribuzione', competenza: 1800 },
 ] });
-assert.equal((voicesHtml.match(/class="voce-row/g) || []).length, 4, 'Dettaglio deve mostrare ogni voce');
-assert.match(voicesHtml, /È la paga normale del mese/);
-assert.match(voicesHtml, /Serve a pensione e tutele/);
-assert.match(voicesHtml, /− 50,00 €/);
-assert.doesNotMatch(voicesHtml, /\+ -50,00/);
-assert.doesNotMatch(voicesHtml, /<th|Rif\.|Importo base/i, 'Dettaglio non deve riproporre colonne tecniche');
-assert.doesNotMatch(voicesHtml, /Contributo INPS/, 'il nome originale quasi identico non va ripetuto');
-assert.match(voicesHtml, /voice-ledger-group competenza/);
-assert.match(voicesHtml, /voice-ledger-group trattenuta/);
-assert.match(voicesHtml, /voice-ledger-group dato/);
-assert.match(voicesHtml, /Competenze/);
-assert.match(voicesHtml, /Trattenute/);
-assert.match(voicesHtml, /Dati di calcolo/);
-assert.match(voicesHtml, /class="voice-ledger-check" data-edit-voice="0"/);
-assert.match(voicesHtml, /Correggi/);
+assert.deepEqual([...extra.map(item => item.title)], ['Straordinari', 'Pezzi di tredicesima e quattordicesima']);
+assert.match(extra[0].sub, /10 ore/);
+assert.equal(S.usatoNelMese({ voci: [{ descrizione: 'Ferie godute', rifQta: 8, rifUnita: 'ORE' }] }, /ferie\s+god/i), '8 ore');
+assert.equal(S.usatoNelMese({ voci: [{ descrizione: 'Ferie godute', competenza: 90 }] }, /ferie\s+god/i), '', 'senza quantità non si inventano ore');
+const tfr = S.tfrSemplice({ tfr: { quotaMese: 164.86, fondo3112: 900, rivalutazione: 20, quotaAnno: 989.16 } });
+assert.equal(tfr.quotaMese, 164.86);
+assert.equal(Math.round(tfr.totale * 100), 190916, 'TFR se lasciassi oggi = fondo al 31/12 + rivalutazione + quota anno');
+assert.equal(S.tfrSemplice({ tfr: {} }), null);
+assert.equal(S.tfrSemplice({ tfr: { quotaMese: 100 } }).totale, null, 'senza fondo non si stima il totale');
 
-const summarySource = sourceBetween('function renderRiassunto', 'function renderDettaglioCompleto');
-const detailSource = sourceBetween('function renderDettaglioCompleto', 'function bindDettaglioCommon');
-assert.match(summarySource, /<h2>Riassunto dei dati<\/h2>/, 'la lettura semplice deve stare nel Riassunto');
-assert.doesNotMatch(detailSource, /<h2>In parole semplici<\/h2>/, 'il Dettaglio non deve duplicare la lettura semplice');
-assert.match(detailSource, /Cedolino dettagliato/);
-assert.match(detailSource, /Tutte le voci/);
-assert.match(detailSource, /Tocca la voce se vuoi approfondire\./);
-assert.match(detailSource, /SourcePreviewCache\.get\(record\.id\)/, 'Modifica dati deve riusare l’originale tenuto in RAM');
-assert.match(detailSource, /target-edit/, 'la correzione deve portare alla riga esatta');
+// ---------- Voci: nomi semplici, conto e rimanenze ----------
+assert.equal(S.nomeSemplice({ descrizione: 'Retribuzione', rifUnita: 'ORE', rifQta: 160, competenza: 1860.47 }), 'Ore lavorate');
+assert.equal(S.nomeSemplice({ descrizione: 'Ferie godute', competenza: 93 }), 'Ferie usate');
+assert.equal(S.nomeSemplice({ descrizione: 'Permessi Rol goduti', competenza: 46 }), 'Permessi usati');
+assert.equal(S.nomeSemplice({ descrizione: "13ma Mensilita'", rifUnita: 'ORE', rifQta: 14.33, competenza: 166 }), 'Pezzo di tredicesima');
+assert.equal(S.nomeSemplice({ descrizione: 'Contributo IVS', trattenuta: 219 }), 'Pensione (INPS)');
+assert.equal(S.nomeSemplice({ descrizione: 'Ritenute IRPEF', trattenuta: 233 }), 'Tasse allo Stato (IRPEF)');
+assert.equal(S.nomeSemplice({ descrizione: 'Voce aziendale XYZ', nome: 'Voce aziendale XYZ', competenza: 10 }), 'Voce aziendale XYZ', 'le voci sconosciute tengono il nome originale');
+assert.equal(S.rimanenteVoce({ descrizione: 'Ferie godute', competenza: 93 }, { ratei: { ferie: { saldo: 11, unita: 'GG' } } }), 'Ti restano ancora 11 giorni di ferie');
+assert.equal(S.rimanenteVoce({ descrizione: 'Permessi Rol goduti', competenza: 46 }, { ratei: { permessi: { saldo: 42, unita: 'ORE' } } }), 'Ti restano ancora 42 ore di permesso');
+summaryContext.Parser.calcoloVoce = () => ({ ok: true, amount: 1860.47 });
+const parts = S.calcoloVoceParti({ descrizione: 'Retribuzione', base: 11.62791, rifQta: 160, rifUnita: 'ORE', competenza: 1860.47 }, {});
+assert.deepEqual([...parts.map(p => p.v || p.op)], ['160 ore', '×', '11,63 €', '=', '1.860,47 €']);
+summaryContext.Parser.calcoloVoce = () => ({ ok: false });
+assert.equal(S.calcoloVoceParti({ descrizione: 'Retribuzione', base: 10, rifQta: 160, rifUnita: 'ORE', competenza: 999 }, {}), null, 'un conto che non torna non va mostrato');
+const irpef = S.calcoloVoceParti({ descrizione: 'Ritenute IRPEF', trattenuta: 233.37 }, { derivati: { irpefLorda: 497.05, detrazioni: 180.35, ulterioreDetrazione: 83.33 } });
+assert.deepEqual([...irpef.map(p => p.v || p.op)], ['497,05 €', '−', '180,35 €', '−', '83,33 €', '=', '233,37 €']);
+assert.equal(S.importoFirmato(-50, false), '− 50,00 €');
+assert.equal(S.importoFirmato(1860.47, false), '1.860,47 €');
+
+const summarySource = sourceBetween('function renderRiassunto', 'function vociHTML');
+const detailSource = sourceBetween('function vociHTML', 'function openRecordEditor');
+assert.match(summarySource, /Dal lordo al netto|flussoHTML\(r\)/);
+assert.match(summarySource, /TFR, il tuo salvadanaio/);
+assert.match(summarySource, /Se lasciassi l’azienda oggi/);
+assert.ok(summarySource.indexOf('controlliSempliciHTML(findings)') > summarySource.indexOf('summary-voci'), 'i controlli vanno in fondo al Riassunto');
+assert.doesNotMatch(summarySource, /<details/, 'il Riassunto mostra tutto senza finestre da aprire');
+assert.match(detailSource, /Quanto hai guadagnato/);
+assert.match(detailSource, /Quanto ti hanno tolto/);
+assert.doesNotMatch(detailSource, /Dati di calcolo/, 'i dati di calcolo non sono una sezione delle Voci');
+assert.match(detailSource, /<details class="gruppo/);
+assert.match(detailSource, /<details class="voce">/);
+assert.match(detailSource, /data-edit-voice/);
+assert.match(uiSource, /SourcePreviewCache\.get\(record\.id\)/, 'Modifica dati deve riusare l’originale tenuto in RAM');
+assert.match(uiSource, /target-edit/, 'la correzione deve portare alla riga esatta');
+assert.doesNotMatch(readFileSync(new URL('../src/checks.js', import.meta.url), 'utf8'), /Taglio del cuneo assente/);
 
 const importChoiceSource = sourceBetween('function proponiDopoImport', 'function startVerifica');
 assert.match(importChoiceSource, /classification\.inScope === false/);
@@ -117,15 +94,12 @@ assert.match(importChoiceSource, /completaSalvataggio\(record\)/, 'Salva e anali
 const voiceExplanationSource = sourceBetween('function vociInfoHtml', 'function controlloUtileVoce');
 assert.match(voiceExplanationSource, /spiegazioneCompletaVoce\(v, s\)/, 'aprendo una voce deve comparire anche il motivo per cui esiste');
 assert.match(voiceExplanationSource, /function spiegazioneCompletaVoce/);
-assert.match(templateSource, />Dettagliato<\/button>/);
-assert.match(templateSource, /id="screen-nav"[\s\S]*id="nav-back"[\s\S]*id="nav-forward"/, 'devono esserci i comandi Indietro e Avanti');
 assert.match(uiSource, /window\.addEventListener\('popstate'/, 'le frecce del browser devono ripristinare la schermata');
-assert.match(uiSource, /history\.back\(\)/);
-assert.match(uiSource, /history\.forward\(\)/);
 assert.match(uiSource, /sessionStorage\.setItem\(APP_HISTORY_STORAGE_PREFIX/, 'la posizione massima dell’app deve sopravvivere al reload della scheda');
 assert.match(uiSource, /window\.addEventListener\('popstate', handleHistoryPopState\)/);
-assert.match(uiSource, /\['#topbar', '#screen-nav', '#tabs', 'main', 'footer'\]/, 'i comandi di navigazione devono essere disattivati dietro ai popup');
-assert.match(cssSource, /#screen-nav button/);
+assert.match(uiSource, /\['#topbar', 'main', 'footer'\]/, 'intestazione e contenuto devono essere disattivati dietro ai popup');
+assert.match(templateSource, />Riassunto<\/button>[\s\S]*>Voci<\/button>/, 'la navigazione principale ha solo Riassunto e Voci');
+assert.match(cssSource, /body\[data-view="importa"\] #tabs/, 'la Home non mostra la navigazione');
 assert.match(cssSource, /td\[data-label="Trattenuta"\][^{]*\{[^}]*background:\s*var\(--alert-bg\)/s);
 assert.match(cssSource, /td\[data-label="Competenza"\][^{]*\{[^}]*background:\s*var\(--ok-bg\)/s);
 
@@ -272,7 +246,7 @@ assert.equal(nextUnconfirmed.meta.fields['totali.netto'].confidence, .1, 'un cam
 const flowContext = { Parser: { derivaIndice: () => ({}) } };
 vm.createContext(flowContext);
 vm.runInContext(
-  sourceBetween('function calcolaFlussoStipendio', 'function flussoStipendioHTML')
+  sourceBetween('const FLOW_COLORS', 'function flussoHTML')
     + '\nthis.calcolaFlussoUnderTest = calcolaFlussoStipendio;',
   flowContext,
 );

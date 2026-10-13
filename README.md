@@ -27,14 +27,14 @@ dispositivo.
 
 ### 2. Leggi il riassunto
 
-Il Riassunto mostra subito netto, trattenute, grafico e ciò che ha cambiato il mese.
+Il Riassunto mostra in una sola pagina netto, trattenute, ferie, permessi e TFR.
 
 ![Riassunto di una busta paga dimostrativa con netto e grafico](docs/screenshots/02-riassunto.jpg)
 
 ### 3. Approfondisci le singole voci
 
-In Dettagliato competenze e trattenute sono separate e ogni voce viene spiegata in modo
-semplice.
+In Voci competenze e trattenute si aprono separatamente e ogni voce mostra spiegazione e
+calcolo.
 
 ![Voci di competenza e trattenuta spiegate nella schermata Dettagliato](docs/screenshots/03-dettagliato.jpg)
 
@@ -47,13 +47,17 @@ semplice.
 
 **[Apri BustaChiara](https://MarvinBonazzo.github.io/bustachiara/)**
 
-1. Trascina un PDF, una scansione o una foto nel riquadro della Home.
+1. Tocca o trascina un PDF, una scansione o una foto nel riquadro della Home.
 2. Scegli **Salva e analizza** per proseguire subito oppure **Controlla i dati** per vedere
    documento e campi affiancati.
-3. L'app apre il **Riassunto**. In **Dettagliato** puoi toccare ogni voce per capirla.
-4. Usa **Indietro** e **Avanti**, oppure le frecce del browser, per tornare alle schermate
-   visitate senza perdere il cedolino selezionato.
-5. Fai periodicamente **Backup → Esporta tutto**: i dati non si sincronizzano da soli.
+3. Il **Riassunto** mostra in una sola pagina il netto, il passaggio dal lordo al netto, le
+   cose in più del mese, ferie e permessi rimasti e il TFR (anche quanto riceveresti
+   lasciando l'azienda oggi). Eventuali cose da controllare sono in fondo.
+4. In **Voci** ogni sezione si apre toccandola; ogni voce mostra in parole semplici cosa
+   significa e, quando il cedolino riporta i numeri, il conto (per esempio
+   `160 ore × 11,63 € = 1.860,47 €`).
+5. Dal menu **⋯** trovi diritti minimi, curiosità, il progetto e il **Backup**: fai
+   periodicamente **Esporta tutto**, perché i dati non si sincronizzano da soli.
 
 ## Installazione semplice
 
@@ -128,7 +132,7 @@ La pipeline gestisce PDF nativi, PDF protetti da password, scansioni e fotografi
 - terminologia di LUL privato, NoiPA, lavoro domestico, edilizia, agricoltura, sanità,
   dirigenti, sport/spettacolo, marittimi, cessazioni e conguagli.
 
-In **Dettagliato** ogni voce conosciuta dice in parole semplici che cosa rappresenta e
+In **Voci** ogni voce conosciuta dice in parole semplici che cosa rappresenta e
 perché compare. Per esempio:
 
 - l'addizionale regionale finanzia funzioni della Regione ed è normalmente calcolata sul

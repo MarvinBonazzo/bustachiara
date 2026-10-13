@@ -6,7 +6,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: 'self'; style-src 'unsafe-inline'; img-src data: blob: 'self'; font-src data:; connect-src blob: data: 'self'; worker-src blob: 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'">
 <meta name="description" content="Leggi e capisci la tua busta paga italiana, in privato e anche offline.">
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#075b41">
+<meta name="theme-color" content="#f6f7f5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -20,27 +20,24 @@
 <body>
 <a class="skip-link" href="#main-content">Vai al contenuto</a>
 <header id="topbar">
-  <div class="brand"><img class="logo" src="data:image/png;base64,__APP_ICON_B64__" alt=""><div><h1>Busta<span>Chiara</span></h1><p>La tua busta paga, finalmente leggibile</p></div></div>
-  <div class="topctrl">
-    <button id="progetto-btn" class="seg-btn" title="Perché esiste questa app">Il progetto</button>
-    <button id="install-btn" class="seg-btn install-btn" hidden>Installa</button>
-    <button id="privacy-badge" title="Scopri come BustaChiara protegge i tuoi dati">🔒 100% privacy</button>
+  <a class="brand" id="brand-home" href="#importa" aria-label="BustaChiara, torna alla Home"><img class="logo" src="data:image/png;base64,__APP_ICON_B64__" alt=""><b>BustaChiara</b></a>
+  <nav id="tabs" aria-label="Sezioni della busta">
+    <button data-view="riassunto" class="tab">Riassunto</button>
+    <button data-view="dettaglio" class="tab">Voci</button>
+  </nav>
+  <div class="menu-wrap">
+    <button type="button" id="menu-btn" aria-haspopup="true" aria-expanded="false" aria-controls="app-menu" aria-label="Altre sezioni"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
+    <div id="app-menu" hidden>
+      <button type="button" class="menu-item" data-view="importa">Carica un’altra busta</button>
+      <button type="button" class="menu-item" data-view="guida">I tuoi diritti minimi</button>
+      <button type="button" class="menu-item" data-view="consigli">Curiosità e consigli</button>
+      <button type="button" class="menu-item" data-view="impostazioni">Backup dei dati</button>
+      <button type="button" class="menu-item" data-view="progetto">Il progetto</button>
+      <button type="button" class="menu-item" id="privacy-badge">Come proteggiamo i tuoi dati</button>
+      <button type="button" class="menu-item" id="install-btn" hidden>Installa l’app</button>
+    </div>
   </div>
 </header>
-
-<div id="screen-nav" aria-label="Cronologia delle schermate">
-  <button type="button" id="nav-back" aria-label="Torna alla schermata precedente" title="Indietro" disabled><span aria-hidden="true">←</span> Indietro</button>
-  <button type="button" id="nav-forward" aria-label="Vai alla schermata successiva" title="Avanti" disabled>Avanti <span aria-hidden="true">→</span></button>
-</div>
-
-<nav id="tabs" aria-label="Sezioni dell'app">
-  <button data-view="importa" class="tab">Home</button>
-  <button data-view="riassunto" class="tab">Riassunto</button>
-  <button data-view="dettaglio" class="tab">Dettagliato</button>
-  <button data-view="guida" class="tab">Diritti minimi</button>
-  <button data-view="consigli" class="tab">Extra</button>
-  <button data-view="impostazioni" class="tab">Backup</button>
-</nav>
 
 <main id="main-content" tabindex="-1">
   <section id="view-importa" class="view"></section>
@@ -54,7 +51,7 @@
 </main>
 
 <footer>
-  <p><strong>BustaChiara è uno strumento informativo</strong>: non sostituisce un consulente del lavoro, un CAF o un sindacato. I valori dei CCNL contrassegnati come "da verificare" sono indicativi e vanno controllati sul testo ufficiale (link forniti). Nessun dato lascia questo dispositivo.</p>
+  <p>BustaChiara aiuta a capire, ma può sbagliare: confronta sempre con il cedolino originale. Non sostituisce consulente del lavoro, CAF o sindacato. Nessun dato lascia questo dispositivo.</p>
   <p class="license">MIT License — Copyright (c) 2026 Marvin</p>
 </footer>
 
