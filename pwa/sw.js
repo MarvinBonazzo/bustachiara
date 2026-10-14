@@ -1,6 +1,6 @@
 /* BustaChiara — service worker: tutto in cache, tutto offline.
    Alza la versione quando pubblichi un aggiornamento. */
-const CACHE = 'bustachiara-v17-redesign-minimal';
+const CACHE = 'bustachiara-v18-controlla-dati';
 const ASSETS = [
   './',
   './index.html',
