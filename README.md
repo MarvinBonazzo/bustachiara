@@ -18,25 +18,20 @@ di BustaChiara a cui inviare il documento.
 
 Gli screenshot seguenti usano esclusivamente nomi e importi inventati.
 
-### 1. Carica la busta paga
-
-Trascina un PDF, una scansione o una foto nella Home. Il documento viene elaborato sul
-dispositivo.
-
-![Home di BustaChiara con il riquadro per caricare una busta paga](docs/screenshots/01-home.jpg)
-
-### 2. Leggi il riassunto
-
-Il Riassunto mostra in una sola pagina netto, trattenute, ferie, permessi e TFR.
-
-![Riassunto di una busta paga dimostrativa con netto e grafico](docs/screenshots/02-riassunto.jpg)
-
-### 3. Approfondisci le singole voci
-
-In Voci competenze e trattenute si aprono separatamente e ogni voce mostra spiegazione e
-calcolo.
-
-![Voci di competenza e trattenuta spiegate nella schermata Dettagliato](docs/screenshots/03-dettagliato.jpg)
+<table>
+  <tr>
+    <td align="center" width="25%"><img src="docs/screenshots/01-home.jpg" alt="Home: solo il riquadro per caricare la busta paga" width="220"></td>
+    <td align="center" width="25%"><img src="docs/screenshots/04-controlla.jpg" alt="Controlla i dati: numeri principali e conti che tornano" width="220"></td>
+    <td align="center" width="25%"><img src="docs/screenshots/02-riassunto.jpg" alt="Riassunto: netto e passaggio dal lordo al netto" width="220"></td>
+    <td align="center" width="25%"><img src="docs/screenshots/03-voci.jpg" alt="Voci: ogni voce mostra il conto, per esempio ore per paga oraria" width="220"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>1. Carica</b><br>PDF, scansione o foto: resta sul dispositivo.</td>
+    <td align="center"><b>2. Controlla</b><br>Numeri principali in vista, il resto si apre solo se serve.</td>
+    <td align="center"><b>3. Leggi il riassunto</b><br>Netto, tasse, pensione, ferie, permessi e TFR in una pagina.</td>
+    <td align="center"><b>4. Capisci ogni voce</b><br>Spiegazione semplice e conto, es. ore × paga oraria.</td>
+  </tr>
+</table>
 
 > **Importante:** un'intelligenza artificiale può sbagliare e anche BustaChiara può
 > sbagliare. Layout nuovi, scansioni rovinate e causali aziendali possono essere letti male.

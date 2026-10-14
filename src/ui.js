@@ -1130,32 +1130,34 @@ function startVerifica(record, warnings, previewPages = []) {
   renderVerifica();
   showView('verifica', { recordId: record.id });
 }
+const MAIN_FIELDS = [
+  ['periodo.mese', 'Mese (1–12)'], ['periodo.anno', 'Anno'],
+  ['totali.competenze', 'Lordo €'], ['totali.trattenute', 'Trattenute €'], ['totali.netto', 'Netto €'],
+];
 const FIELD_GROUPS = [
-  { titolo: 'Periodo e persone', fields: [
-    ['periodo.mese', 'Mese (1–12)'], ['periodo.anno', 'Anno'], ['dipendente.nome', 'Dipendente'], ['dipendente.cf', 'Codice fiscale'],
-    ['dipendente.livello', 'Livello'], ['dipendente.qualifica', 'Qualifica'], ['dipendente.dataAssunzione', 'Data assunzione'], ['azienda.nome', 'Azienda'],
+  { titolo: 'Persone e azienda', fields: [
+    ['dipendente.nome', 'Dipendente'], ['dipendente.cf', 'Codice fiscale'], ['azienda.nome', 'Azienda'],
+    ['dipendente.livello', 'Livello'], ['dipendente.qualifica', 'Qualifica'], ['dipendente.dataAssunzione', 'Data assunzione'],
   ]},
-  { titolo: 'Elementi della retribuzione (mensili)', info: 'elementi', fields: [
+  { titolo: 'Paga e orario', info: 'elementi', fields: [
     ['elementi.pagaBase', 'Paga base €'], ['elementi.contingenza', 'Contingenza €'], ['elementi.superminimo', 'Superminimo €'],
     ['elementi.scatti', 'Scatti anzianità €'], ['elementi.totale', 'Totale elementi €'], ['orario.oreOrdinarie', 'Ore ordinarie lavorate'],
-    ['orario.giorniLavorati', 'Giorni lavorati'], ['orario.pagaOraria', 'Tariffa oraria €'], ['orario.pagaGiornaliera', 'Tariffa giornaliera €'],
-  ]},
-  { titolo: 'Totali del mese', info: 'netto', fields: [
-    ['totali.competenze', 'Totale competenze €'], ['totali.trattenute', 'Totale trattenute €'], ['totali.arrotondamento', 'Arrotondamento €'], ['totali.netto', 'NETTO €'],
+    ['orario.giorniLavorati', 'Giorni lavorati'], ['orario.pagaOraria', 'Paga all’ora €'], ['orario.pagaGiornaliera', 'Paga al giorno €'],
+    ['totali.arrotondamento', 'Arrotondamento €'],
   ]},
   { titolo: 'TFR', info: 'tfr', fields: [
-    ['tfr.retribUtile', 'Retribuzione utile TFR €'], ['tfr.quotaMese', 'Quota TFR mese €'], ['tfr.fondo3112', 'Fondo TFR al 31/12 €'],
-    ['tfr.rivalutazione', 'Rivalutazione €'], ['tfr.quotaAnno', 'Quota anno €'], ['tfr.aFondi', 'TFR a fondi €'],
+    ['tfr.retribUtile', 'Retribuzione utile TFR €'], ['tfr.quotaMese', 'Quota TFR del mese €'], ['tfr.fondo3112', 'Fondo TFR al 31/12 €'],
+    ['tfr.rivalutazione', 'Rivalutazione €'], ['tfr.quotaAnno', 'Quota dell’anno €'], ['tfr.aFondi', 'TFR a fondi €'],
   ]},
-  { titolo: 'Ferie e permessi (ratei)', info: 'saldo', fields: [
-    ['ratei.ferie.residuoAp', 'Ferie: residuo AP'], ['ratei.ferie.maturato', 'Ferie: maturate'], ['ratei.ferie.goduto', 'Ferie: godute anno corrente'], ['ratei.ferie.godutoAp', 'Ferie: godute anni precedenti'], ['ratei.ferie.saldo', 'Ferie: saldo'],
-    ['ratei.permessi.residuoAp', 'Permessi: residuo AP'], ['ratei.permessi.maturato', 'Permessi: maturati'], ['ratei.permessi.goduto', 'Permessi: goduti anno corrente'], ['ratei.permessi.godutoAp', 'Permessi: goduti anni precedenti'], ['ratei.permessi.saldo', 'Permessi: saldo'],
+  { titolo: 'Ferie e permessi', info: 'saldo', fields: [
+    ['ratei.ferie.residuoAp', 'Ferie: residuo anno prima'], ['ratei.ferie.maturato', 'Ferie: maturate'], ['ratei.ferie.goduto', 'Ferie: usate quest’anno'], ['ratei.ferie.godutoAp', 'Ferie: usate dell’anno prima'], ['ratei.ferie.saldo', 'Ferie: rimaste'],
+    ['ratei.permessi.residuoAp', 'Permessi: residuo anno prima'], ['ratei.permessi.maturato', 'Permessi: maturati'], ['ratei.permessi.goduto', 'Permessi: usati quest’anno'], ['ratei.permessi.godutoAp', 'Permessi: usati dell’anno prima'], ['ratei.permessi.saldo', 'Permessi: rimasti'],
   ]},
-  { titolo: 'Progressivi annui', info: 'progressivi', fields: [
+  { titolo: 'Progressivi dell’anno', info: 'progressivi', fields: [
     ['progressivi.impInps', 'Imponibile INPS progressivo €'], ['progressivi.impIrpef', 'Imponibile IRPEF progressivo €'], ['progressivi.irpefPagata', 'IRPEF pagata €'],
   ]},
 ];
-const NUM_FIELDS = new Set(FIELD_GROUPS.flatMap(g => g.fields.map(f => f[0])).filter(p => !/nome|cf|qualifica|dataAssunzione|livello/.test(p)));
+const NUM_FIELDS = new Set([...MAIN_FIELDS, ...FIELD_GROUPS.flatMap(g => g.fields)].map(f => f[0]).filter(p => !/nome|cf|qualifica|dataAssunzione|livello/.test(p)));
 
 function sourceButton(path, label = 'Mostra nel documento') {
   const meta = draft && draft.record && draft.record.meta && draft.record.meta.fields && draft.record.meta.fields[path];
@@ -1219,46 +1221,57 @@ function renderVerifica() {
     const label = meta.confidence < 0.55 ? 'incerto' : 'da verificare';
     return ` <span class="field-confidence ${meta.confidence < 0.55 ? 'low' : ''}" title="${esc(meta.method || 'estrazione euristica')}">${label}</span>`;
   };
+  const isUncertain = path => { const meta = r.meta && r.meta.fields && r.meta.fields[path]; return !!meta && meta.confidence < 0.75; };
+  const fieldHTML = ([k, lab]) => {
+    const v = getPath(r, k);
+    return `<label class="field">${esc(lab)}${confidenceBadge(k)}${sourceButton(k)}<input data-k="${k}" inputmode="${NUM_FIELDS.has(k) ? 'decimal' : 'text'}" value="${v == null ? '' : esc(k.startsWith('periodo.') ? String(v) : NUM_FIELDS.has(k) && typeof v === 'number' ? fmtEur(v) : v)}"></label>`;
+  };
+  const dubbi = (fields) => fields.filter(([k]) => isUncertain(k)).length;
+  const gruppo = (id, title, sub, body, open) => `<details class="gruppo" ${id ? `id="${id}"` : ''} ${open ? 'open' : ''}>
+    <summary><span class="gruppo-title"><b>${title}</b><small>${sub}</small></span></summary>
+    <div class="gruppo-body verify-group">${body}</div>
+  </details>`;
+  const subDubbi = (n, fallback) => n ? `${n} ${n === 1 ? 'dato da verificare' : 'dati da verificare'}` : fallback;
+  const contractDubbi = dubbi([['ccnl.cnel'], ['ccnl.descrizione']]) + (r.ccnlId ? 0 : 1);
   $('#view-verifica').innerHTML = `
   <div class="verify-layout ${draft.previewPages && draft.previewPages.length ? 'with-document' : ''}">
   ${sourceViewerHtml()}
-  <div class="card verify-form">
-    <h2>Verifica i dati estratti</h2>
-    <div class="finding ${qualityClass}"><span class="lvchip ${qualityClass}">${qualityLabel}</span><div>
-      <p><b>Affidabilità stimata ${quality.score}/100</b>${software} · ${r.voci.length} voci riconosciute.</p>
-      <p class="muted small">È una stima tecnica, non una garanzia: conferma soprattutto netto, trattenute, ore e CCNL.</p>
-    </div></div>
-    ${draft.warnings.map(w => `<div class="finding warn"><span class="lvchip warn">Nota</span><div><p>${esc(w)}</p></div></div>`).join('')}
-    <p class="muted">Correggi quello che non torna: i controlli valgono quanto i dati che confermi. I numeri accettano sia 1.234,56 che 1234.56.</p>
-    <h3>Documento</h3>
-    <div class="grid">
-      <label class="field">Tipo cedolino<select id="f-doc-type">${Object.entries(TIPO_CEDOLINO).map(([value, label]) => `<option value="${value}" ${tipoCedolino(r) === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
-      <label class="field">Formato rilevato<input value="${esc((r.meta && r.meta.software) || 'non identificato')}" readonly></label>
-      <label class="field">Famiglia<input value="${esc((r.meta && r.meta.settore) || 'privato-lul')}" readonly></label>
+  <div class="verify-form">
+    <div class="page-head">
+      <h1>Controlla i dati</h1>
+      <p class="muted">Confronta con il documento e correggi solo quello che non torna.</p>
+      <p class="verify-quality ${qualityClass}">Lettura ${qualityLabel.toLowerCase()} · ${r.voci.length} ${r.voci.length === 1 ? 'voce' : 'voci'} trovate${software}</p>
     </div>
-    <h3>Contratto (CCNL) ${iBtn('ccnl')}</h3>
-    <div class="grid">
-      <label class="field">CCNL applicato<select id="f-ccnl"><option value="">— non identificato —</option>${ccnlOpts}</select></label>
-      <label class="field">Codice CNEL (dal cedolino)${confidenceBadge('ccnl.cnel')}${sourceButton('ccnl.cnel')}<input data-k="ccnl.cnel" value="${esc(r.ccnl.cnel || '')}" placeholder="es. H052"></label>
-      <label class="field">Descrizione contratto${confidenceBadge('ccnl.descrizione')}${sourceButton('ccnl.descrizione')}<input data-k="ccnl.descrizione" value="${esc(r.ccnl.descrizione || '')}"></label>
+    ${draft.warnings.map(w => `<p class="verify-note">${esc(w)}</p>`).join('')}
+    <section class="card">
+      <h2>I numeri principali</h2>
+      <div class="grid">${MAIN_FIELDS.map(fieldHTML).join('')}</div>
+      <div id="live-quadratura"></div>
+    </section>
+    <div class="card accordion">
+      ${gruppo('verify-voci', `Le voci del cedolino`, `${r.voci.length} ${r.voci.length === 1 ? 'voce' : 'voci'} · tocca × per eliminare una riga letta male`, `
+        <div class="tablewrap"><table class="voci" id="voci-edit">
+          <thead><tr><th>Codice</th><th>Descrizione</th><th>Tipo</th><th class="num">Base</th><th class="num">Rif.</th><th>Unità</th><th class="num">Trattenuta</th><th class="num">Competenza</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <div class="btnrow"><button class="ghost" id="btn-add-voce">+ Aggiungi voce</button></div>`, false)}
+      ${gruppo('', `Contratto ${iBtn('ccnl')}`, subDubbi(contractDubbi, r.ccnlId ? esc((ccnlById(r.ccnlId) || {}).nome || 'Riconosciuto') : 'Non riconosciuto'), `
+        <div class="grid">
+          <label class="field">Tipo di busta<select id="f-doc-type">${Object.entries(TIPO_CEDOLINO).map(([value, label]) => `<option value="${value}" ${tipoCedolino(r) === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+          <label class="field">Contratto (CCNL)<select id="f-ccnl"><option value="">— non identificato —</option>${ccnlOpts}</select></label>
+          <label class="field">Codice CNEL${confidenceBadge('ccnl.cnel')}${sourceButton('ccnl.cnel')}<input data-k="ccnl.cnel" value="${esc(r.ccnl.cnel || '')}" placeholder="es. H052"></label>
+          <label class="field">Descrizione contratto${confidenceBadge('ccnl.descrizione')}${sourceButton('ccnl.descrizione')}<input data-k="ccnl.descrizione" value="${esc(r.ccnl.descrizione || '')}"></label>
+        </div>
+        ${ccnlSuggestions.length ? `<div class="ccnl-suggestions"><p class="muted small"><b>Contratti più probabili</b> — scegli solo se la descrizione coincide col cedolino.</p>${ccnlSuggestions.map(item => `<button type="button" class="ccnl-suggestion ${r.ccnlId === item.contract.id ? 'selected' : ''}" data-ccnl-suggest="${esc(item.contract.id)}"><span>${esc(item.contract.nome)}</span><small>${Math.round(item.score * 100)}% · ${esc(item.reasons.join('; '))}</small></button>`).join('')}</div>` : ''}`, contractDubbi > 0)}
+      ${FIELD_GROUPS.map(g => {
+        const n = dubbi(g.fields);
+        const filled = g.fields.filter(([k]) => getPath(r, k) != null && getPath(r, k) !== '').length;
+        return gruppo('', `${esc(g.titolo)} ${g.info ? iBtn(g.info) : ''}`, subDubbi(n, filled ? `${filled} ${filled === 1 ? 'dato letto' : 'dati letti'}` : 'Nessun dato letto'), `<div class="grid">${g.fields.map(fieldHTML).join('')}</div>`, n > 0);
+      }).join('')}
     </div>
-    ${ccnlSuggestions.length ? `<div class="ccnl-suggestions"><p class="muted small"><b>Contratti più probabili</b> — scegli solo se la descrizione coincide col cedolino.</p>${ccnlSuggestions.map(item => `<button type="button" class="ccnl-suggestion ${r.ccnlId === item.contract.id ? 'selected' : ''}" data-ccnl-suggest="${esc(item.contract.id)}"><span>${esc(item.contract.nome)}</span><small>${Math.round(item.score * 100)}% · ${esc(item.reasons.join('; '))}</small></button>`).join('')}</div>` : ''}
-    ${FIELD_GROUPS.map(g => `<h3>${esc(g.titolo)} ${g.info ? iBtn(g.info) : ''}</h3><div class="grid">${g.fields.map(([k, lab]) => {
-      const v = getPath(r, k);
-      return `<label class="field">${esc(lab)}${confidenceBadge(k)}${sourceButton(k)}<input data-k="${k}" value="${v == null ? '' : esc(NUM_FIELDS.has(k) && typeof v === 'number' ? fmtEur(v, /mese|anno$/.test(k) && k.startsWith('periodo') ? 0 : 2) : v)}"></label>`;
-    }).join('')}</div>`).join('')}
-    <h3>Voci del cedolino <span class="muted small">(tocca × per eliminare una riga letta male)</span></h3>
-    <div class="tablewrap"><table class="voci" id="voci-edit">
-      <thead><tr><th>Codice</th><th>Descrizione</th><th>Tipo</th><th class="num">Base ${iBtn('base')}</th><th class="num">Rif. ${iBtn('riferimento')}</th><th>Unità</th><th class="num">Trattenuta ${iBtn('trattenuta')}</th><th class="num">Competenza ${iBtn('competenza')}</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table></div>
-    <div class="btnrow">
-      <button class="ghost" id="btn-add-voce">+ Aggiungi voce</button>
-    </div>
-    <div id="live-quadratura" style="margin-top:10px"></div>
-    <div class="btnrow">
-      <button class="primary" id="btn-salva">Salva e analizza</button>
+    <div class="verify-actions">
       <button class="ghost" id="btn-annulla">Annulla</button>
+      <button class="primary" id="btn-salva">Salva e analizza</button>
     </div>
   </div></div>`;
   renderVociEdit();
@@ -1388,22 +1401,19 @@ function liveQuadratura() {
   const r = draft.record, t = r.totali || {};
   const sumC = r.voci.reduce((s, v) => s + (v.competenza || 0), 0);
   const sumT = r.voci.reduce((s, v) => s + (v.trattenuta || 0), 0);
-  let html = `<p class="muted small">Somma voci → competenze <b>${fmtEur(sumC)}</b> € · trattenute <b>${fmtEur(sumT)}</b> €</p>`;
+  let html = '';
   if (t.competenze != null && t.trattenute != null && t.netto != null) {
     const quadratura = Parser.quadraturaTotali(t);
-    const message = quadratura.ok
-      ? (quadratura.modalita === 'netto-arrotondato'
-        ? `Il netto è coerente: competenze − trattenute = ${fmtEur(quadratura.base)} €, scarto di arrotondamento ${fmtEur(quadratura.scarto)} €.`
-        : 'Il netto quadra con i totali.')
-      : `Il risultato più vicino è <b>${fmtEur(quadratura.atteso)}</b> €, ma il netto indicato è <b>${fmtEur(t.netto)}</b> €.`;
-    html += `<div class="finding ${quadratura.ok ? 'ok' : 'alert'}"><span class="lvchip ${quadratura.ok ? 'ok' : 'alert'}">${quadratura.ok ? 'OK' : 'Attenzione'}</span><div><p>${message}</p></div></div>`;
+    html += quadratura.ok
+      ? `<p class="verify-check ok">✓ I conti tornano: ${fmtEur(t.competenze)} − ${fmtEur(t.trattenute)} = ${fmtEur(t.netto)} €${quadratura.modalita === 'netto-arrotondato' ? ` (arrotondamento ${fmtEur(quadratura.scarto)} €)` : ''}</p>`
+      : `<p class="verify-check alert">I conti non tornano: lordo − trattenute fa <b>${fmtEur(quadratura.atteso)} €</b>, ma il netto scritto è <b>${fmtEur(t.netto)} €</b>. Ricontrolla questi tre numeri.</p>`;
+  }
+  if (Math.abs(sumC - (t.competenze || 0)) > .05 || Math.abs(sumT - (t.trattenute || 0)) > .05) {
+    html += `<p class="muted small">Somma delle voci lette: guadagni ${fmtEur(sumC)} € · trattenute ${fmtEur(sumT)} €. Se è diversa dai totali, forse manca o è in più una voce.</p>`;
   }
   const consistency = Parser.valutaCoerenza(r);
-  if (consistency.score != null) {
-    const failed = consistency.checks.filter(check => !check.ok).map(check => reconciliationCheckLabel(check, r));
-    const visibleFailed = failed.slice(0, 3);
-    html += `<div class="reconciliation-summary"><b>Coerenza globale ${consistency.score}/100</b><span>${consistency.passed}/${consistency.total} vincoli superati${visibleFailed.length ? ` · da verificare: ${esc(visibleFailed.join(', '))}${failed.length > visibleFailed.length ? ` e altri ${failed.length - visibleFailed.length}` : ''}` : ''}</span></div>`;
-  }
+  const failed = (consistency.checks || []).filter(check => !check.ok).map(check => reconciliationCheckLabel(check, r));
+  if (failed.length) html += `<p class="muted small">Da ricontrollare: ${esc(failed.slice(0, 3).join(', '))}${failed.length > 3 ? ` e altri ${failed.length - 3}` : ''}.</p>`;
   const alternatives = r.meta && r.meta.reconciliation && r.meta.reconciliation.alternatives || [];
   const ambiguous = alternatives.length > 1 && alternatives[0].score - alternatives[1].score < .9;
   if (ambiguous) {
@@ -1803,6 +1813,7 @@ function openRecordEditor(record, voiceIndex = null) {
   const previews = SourcePreviewCache.get(record.id) || [];
   startVerifica(copy, ['Stai modificando una busta già salvata.'], previews);
   if (voiceIndex == null) return;
+  const voiceGroup = $('#verify-voci'); if (voiceGroup) voiceGroup.open = true;
   requestAnimationFrame(() => {
     const row = $(`#voci-edit tr[data-i="${voiceIndex}"]`, $('#view-verifica'));
     if (!row) return;
